@@ -1,0 +1,49 @@
+# Render Blueprint. In the Render dashboard: New -> Blueprint -> pick this repo.
+# Everything below is created automatically except the values marked sync:false,
+# which Render prompts you for so no secret is ever committed here.
+services:
+  - type: web
+    name: expense-manager-api
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+
+      # Render injects PORT; application.properties already reads it.
+
+      # Full JDBC URL of your PostgreSQL database, e.g. a free Neon project:
+      #   jdbc:postgresql://ep-xxx.ap-southeast-1.aws.neon.tech/expense_manager?sslmode=require
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+
+      # Neon's free tier allows few connections; keep the pool small.
+      - key: DB_POOL_SIZE
+        value: 3
+
+      # Generated once by Render and kept for the life of the service. Rotating it
+      # invalidates every issued access token, which is the intended behaviour.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRATION_MS
+        value: 900000
+      - key: JWT_REFRESH_EXPIRATION_MS
+        value: 604800000
+
+      # Comma-separated Google OAuth client IDs. Leave blank to disable Google sign-in.
+      - key: GOOGLE_CLIENT_IDS
+        sync: false
+
+      # The mobile app is not a browser origin, so CORS only matters if you add a web
+      # client later. Narrow this then.
+      - key: CORS_ALLOWED_ORIGINS
+        value: "*"

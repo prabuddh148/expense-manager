@@ -1,0 +1,25 @@
+# The API runs on a free Render instance that sleeps after ~15 minutes idle, and waking
+# it takes ~43 seconds. Pinging the health endpoint keeps it warm so the app never eats
+# that delay. Public repositories get unlimited Actions minutes, so this costs nothing.
+name: Keep API awake
+
+on:
+  schedule:
+    # Every 10 minutes. GitHub queues scheduled jobs on a best-effort basis and can run
+    # them late under load, which is fine here - a late ping only means one cold start.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping health endpoint
+        run: |
+          # --max-time covers a full cold start; the first ping after a sleep is slow
+          # on purpose, because that is exactly the wake-up we are paying for here.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 120 \
+            https://expense-manager-api-t5qt.onrender.com/api/health)
+          echo "health returned $code"
+          test "$code" = "200"

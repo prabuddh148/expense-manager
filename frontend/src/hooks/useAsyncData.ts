@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { AppError, toAppError } from '../api';
 
@@ -105,6 +106,27 @@ export function useAsyncData<T>(fetcher: () => Promise<T>, deps: unknown[], opti
     void run('initial');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
+
+  /**
+   * The tab bar is a pager, so every tab screen stays mounted once visited and the
+   * effect above never runs again. Without this, adding an expense and swiping back to
+   * the dashboard would show the figures from whenever the tab first loaded.
+   *
+   * Refetches quietly on every focus after the first, keeping the current data on
+   * screen instead of flashing a spinner.
+   */
+  const focusedOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!focusedOnce.current) {
+        focusedOnce.current = true;
+        return;
+      }
+      if (enabled) {
+        void run('refresh');
+      }
+    }, [enabled, run]),
+  );
 
   return {
     ...state,

@@ -1,13 +1,7 @@
 import React from 'react';
 import type { RefreshControlProps } from 'react-native';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  View,
-  ViewStyle,
-} from 'react-native';
+import { StyleSheet, View, ViewStyle } from 'react-native';
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Edge, SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '../theme';
@@ -40,25 +34,28 @@ export function Screen({
   const padding = padded ? { paddingHorizontal: spacing.lg } : null;
 
   const body = scroll ? (
-    <ScrollView
+    // Scrolls the focused input clear of the keyboard instead of leaving it underneath,
+    // which plain ScrollView cannot do while the app is edge-to-edge.
+    <KeyboardAwareScrollView
       style={styles.flex}
       contentContainerStyle={[padding, { paddingBottom: spacing.xxl }, contentStyle]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       refreshControl={refreshControl}
+      bottomOffset={spacing.xxl}
     >
       {children}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   ) : (
     <View style={[styles.flex, padding, contentStyle]}>{children}</View>
   );
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: colors.background }]} edges={edges}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      {/* "padding" on both platforms now: this KeyboardAvoidingView follows the native
+          keyboard directly rather than relying on Android resizing the window, which
+          edge-to-edge stops it from doing. Footers lift with the keyboard too. */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         {body}
         {footer}
       </KeyboardAvoidingView>

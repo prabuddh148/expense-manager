@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -20,6 +21,7 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
         <Pressable style={styles.dismissArea} onPress={onClose} accessibilityLabel="Close" />
 
@@ -67,11 +69,13 @@ export function BottomSheet({ visible, onClose, title, children, maxHeightRatio 
           </ScrollView>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   backdrop: { flex: 1, justifyContent: 'flex-end' },
   dismissArea: { flex: 1 },
   sheet: { paddingTop: 8 },

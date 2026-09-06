@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -16,18 +17,23 @@ import { ThemeProvider, useTheme } from './src/theme';
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <ThemeProvider>
-          <NetworkProvider>
-            <AuthProvider>
-              <ToastProvider>
-                <ThemedStatusBar />
-                <RootNavigator />
-              </ToastProvider>
-            </AuthProvider>
-          </NetworkProvider>
-        </ThemeProvider>
-      </SafeAreaProvider>
+      {/* Tracks the keyboard natively. The app draws edge-to-edge, where Android no
+          longer resizes the window, so the built-in KeyboardAvoidingView had nothing
+          to react to and inputs stayed hidden behind the keyboard. */}
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <ThemeProvider>
+            <NetworkProvider>
+              <AuthProvider>
+                <ToastProvider>
+                  <ThemedStatusBar />
+                  <RootNavigator />
+                </ToastProvider>
+              </AuthProvider>
+            </NetworkProvider>
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

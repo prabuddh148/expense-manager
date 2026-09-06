@@ -58,8 +58,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "00000000-0000-0000-0000-000000000000"
+        "projectId": "a7f1a2bd-cebd-4c82-af1a-60541245fde8"
       }
-    }
+    },
+    "owner": "prabuddhdev_02"
   }
 }

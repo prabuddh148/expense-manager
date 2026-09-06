@@ -1,3 +1,4 @@
+export * from './apiHost';
 export * from './client';
 export * from './errors';
 export * from './tokenStorage';

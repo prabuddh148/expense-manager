@@ -8,9 +8,11 @@ import React, {
 } from 'react';
 
 import {
+  applyApiBaseUrl,
   authApi,
   clearTokens,
   hydrateTokensFromStorage,
+  loadApiBaseUrl,
   saveTokens,
   setSessionExpiredHandler,
   setTokens,
@@ -73,6 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     (async () => {
+      // Must come first: a saved host override decides where /auth/me is even sent.
+      applyApiBaseUrl(await loadApiBaseUrl());
+
       const stored = await hydrateTokensFromStorage();
       if (!stored) {
         if (!cancelled) setStatus('unauthenticated');

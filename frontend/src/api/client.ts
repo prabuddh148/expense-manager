@@ -1,13 +1,14 @@
 import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 
-import { API_BASE_URL, REQUEST_TIMEOUT_MS } from '../constants/config';
+import { REQUEST_TIMEOUT_MS } from '../constants/config';
 import { AuthResponse } from '../types/api';
+import { getApiBaseUrl } from './apiHost';
 import { clearTokens, loadTokens, saveTokens } from './tokenStorage';
 
 type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
 
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getApiBaseUrl(),
   timeout: REQUEST_TIMEOUT_MS,
   headers: { 'Content-Type': 'application/json' },
 });
@@ -45,7 +46,13 @@ apiClient.interceptors.request.use((config) => {
 });
 
 /** Refresh endpoints must not go through the interceptor, or a failure would loop. */
-const bareClient = axios.create({ baseURL: API_BASE_URL, timeout: REQUEST_TIMEOUT_MS });
+const bareClient = axios.create({ baseURL: getApiBaseUrl(), timeout: REQUEST_TIMEOUT_MS });
+
+/** Both clients are created once, so a host change has to be pushed into them. */
+export function applyApiBaseUrl(url: string) {
+  apiClient.defaults.baseURL = url;
+  bareClient.defaults.baseURL = url;
+}
 
 async function refreshAccessToken(): Promise<string> {
   if (!refreshToken) {

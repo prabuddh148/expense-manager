@@ -20,7 +20,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://10.141.77.126:8080/api"
+        "EXPO_PUBLIC_API_URL": "https://expense-manager-api-t5qt.onrender.com/api"
       }
     },
     "production": {
@@ -29,7 +29,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://your-backend.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://expense-manager-api-t5qt.onrender.com/api"
       }
     }
   },

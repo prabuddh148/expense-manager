@@ -22,7 +22,13 @@ export const GOOGLE_CLIENT_IDS = {
 export const isGoogleConfigured =
   Boolean(GOOGLE_CLIENT_IDS.android || GOOGLE_CLIENT_IDS.ios || GOOGLE_CLIENT_IDS.web);
 
-export const REQUEST_TIMEOUT_MS = 15000;
+/**
+ * Generous on purpose. The API runs on a free tier that sleeps after ~15 minutes idle,
+ * and a cold start measured ~43 seconds; a shorter timeout made the first request after
+ * a pause fail every time. A genuine loss of connectivity is caught immediately by
+ * NetworkContext instead of waiting this out.
+ */
+export const REQUEST_TIMEOUT_MS = 70000;
 
 export const CURRENCY = {
   code: 'INR',

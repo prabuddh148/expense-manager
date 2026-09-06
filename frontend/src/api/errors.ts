@@ -18,7 +18,7 @@ export function toAppError(error: unknown): AppError {
       return {
         kind: 'network',
         message: timedOut
-          ? 'The server took too long to respond. Check your connection and try again.'
+          ? 'The server is taking a while to wake up. Give it a moment and try again.'
           : 'Cannot reach the server. Check your internet connection and try again.',
       };
     }

@@ -1,0 +1,21 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    // Declared here as well as in expo/tsconfig.base: an editor whose TypeScript server
+    // cannot resolve the extends chain would otherwise fall back to defaults with no JSX
+    // support, which surfaces as "Cannot use JSX unless the '--jsx' flag is provided".
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "module": "preserve",
+    "target": "ESNext",
+    "lib": ["DOM", "ESNext"],
+    "allowJs": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx", "*.d.ts", "src/**/*.d.ts"],
+  "exclude": ["node_modules", "android", "ios", "dist", ".expo"]
+}

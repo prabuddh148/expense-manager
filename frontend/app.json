@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Expense Manager",
+    "slug": "expense-manager",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "expensemanager",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "assetBundlePatterns": ["**/*"],
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "backgroundColor": "#0D1016",
+      "resizeMode": "contain"
+    },
+    "android": {
+      "package": "io.theforgelabs.expensemanager",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#3D7BF7"
+      },
+      "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"],
+      "edgeToEdgeEnabled": true,
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "backgroundColor": "#0D1016",
+        "resizeMode": "contain"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "io.theforgelabs.expensemanager",
+      "buildNumber": "1",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-font",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-sharing",
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "00000000-0000-0000-0000-000000000000"
+      }
+    }
+  }
+}

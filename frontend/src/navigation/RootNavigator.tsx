@@ -5,7 +5,8 @@ import {
   Theme,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../theme';
@@ -19,6 +20,7 @@ const RootStack = createNativeStackNavigator();
 export function RootNavigator() {
   const { status } = useAuth();
   const { colors, isDark } = useTheme();
+  const [splashDone, setSplashDone] = useState(false);
 
   // React Navigation keeps its own theme for card backgrounds and the status bar.
   const navigationTheme = useMemo<Theme>(() => {
@@ -38,20 +40,33 @@ export function RootNavigator() {
   }, [colors, isDark]);
 
   return (
-    <NavigationContainer theme={navigationTheme}>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        {status === 'loading' ? (
-          <RootStack.Screen name="Splash" component={SplashScreen} />
-        ) : status === 'authenticated' ? (
-          // Swapping the whole subtree is what makes the guard real: while signed in the
-          // auth screens are not mounted at all, so there is nothing to navigate back to.
-          <RootStack.Screen name="App" component={AppStack} />
-        ) : (
-          <RootStack.Screen name="Auth" component={AuthStack} />
-        )}
-      </RootStack.Navigator>
-    </NavigationContainer>
+    <View style={styles.flex}>
+      <NavigationContainer theme={navigationTheme}>
+        <RootStack.Navigator screenOptions={{ headerShown: false }}>
+          {status === 'loading' ? (
+            <RootStack.Screen name="Splash" component={SplashScreen} />
+          ) : status === 'authenticated' ? (
+            // Swapping the whole subtree is what makes the guard real: while signed in
+            // the auth screens are not mounted at all, so there is nothing to go back to.
+            <RootStack.Screen name="App" component={AppStack} />
+          ) : (
+            <RootStack.Screen name="Auth" component={AuthStack} />
+          )}
+        </RootStack.Navigator>
+      </NavigationContainer>
+
+      {/* Sits above the navigator rather than inside it, so the real screen mounts and
+          finishes its own first render underneath while the splash is still visible.
+          By the time this fades there is a painted screen behind it, not a blank one. */}
+      {splashDone ? null : (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <SplashScreen ready={status !== 'loading'} onFinish={() => setSplashDone(true)} />
+        </View>
+      )}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({ flex: { flex: 1 } });
 
 export type { AppStackParamList };

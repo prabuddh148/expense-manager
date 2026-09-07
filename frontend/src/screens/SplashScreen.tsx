@@ -10,7 +10,22 @@ import { useTheme } from '../theme';
  * Everything animates on the native driver (opacity and transform only), so the sequence
  * stays smooth even while the auth request is in flight on the JS thread.
  */
-export function SplashScreen() {
+type Props = {
+  /** True once the session has been restored and the app underneath can be shown. */
+  ready?: boolean;
+  /** Called after the fade-out finishes, so the overlay can be unmounted. */
+  onFinish?: () => void;
+};
+
+/**
+ * Held for at least this long. Restoring the session is a keystore read that finishes
+ * in a few dozen milliseconds, which is quick enough that the entrance animation would
+ * be cut off mid-way and read as a flicker.
+ */
+const MINIMUM_VISIBLE_MS = 2000;
+const FADE_OUT_MS = 350;
+
+export function SplashScreen({ ready = false, onFinish }: Props) {
   const { colors, spacing, typography } = useTheme();
 
   const logoScale = useRef(new Animated.Value(0.6)).current;
@@ -22,6 +37,28 @@ export function SplashScreen() {
   const taglineShift = useRef(new Animated.Value(14)).current;
   const taglineOpacity = useRef(new Animated.Value(0)).current;
   const barProgress = useRef(new Animated.Value(0)).current;
+  const screenOpacity = useRef(new Animated.Value(1)).current;
+  const mountedAt = useRef(Date.now()).current;
+
+  // Leaves only once the session is restored and the animation has had its moment, then
+  // fades rather than vanishing, so the dashboard appears to come up through it.
+  useEffect(() => {
+    if (!ready) return undefined;
+
+    const remaining = Math.max(0, MINIMUM_VISIBLE_MS - (Date.now() - mountedAt));
+    const timer = setTimeout(() => {
+      Animated.timing(screenOpacity, {
+        toValue: 0,
+        duration: FADE_OUT_MS,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) onFinish?.();
+      });
+    }, remaining);
+
+    return () => clearTimeout(timer);
+  }, [mountedAt, onFinish, ready, screenOpacity]);
 
   useEffect(() => {
     const entrance = Animated.sequence([
@@ -135,7 +172,9 @@ export function SplashScreen() {
   });
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <Animated.View
+      style={[styles.container, { backgroundColor: colors.background, opacity: screenOpacity }]}
+    >
       <View style={styles.logoArea}>
         <Animated.View
           pointerEvents="none"
@@ -191,7 +230,7 @@ export function SplashScreen() {
           ]}
         />
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

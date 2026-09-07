@@ -95,8 +95,10 @@ export function ExpensesScreen() {
   );
 
   const load = useCallback(
-    async (mode: 'initial' | 'refresh' | 'more', targetPage = 0) => {
+    async (mode: 'initial' | 'refresh' | 'background' | 'more', targetPage = 0) => {
       if (mode === 'initial') setLoading(items.length === 0);
+      // 'background' is the silent refetch on focus: no spinner, rows stay in place
+      // and are swapped once the response lands.
       if (mode === 'refresh') setRefreshing(true);
       if (mode === 'more') setLoadingMore(true);
 
@@ -131,7 +133,7 @@ export function ExpensesScreen() {
   // Coming back from Add/Edit should show the change without a manual pull.
   useFocusEffect(
     useCallback(() => {
-      void load('refresh', 0);
+      void load('background', 0);
       categoryApi
         .list()
         .then(setCategories)

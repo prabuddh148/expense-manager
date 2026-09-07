@@ -53,16 +53,19 @@ export function useAsyncData<T>(fetcher: () => Promise<T>, deps: unknown[], opti
   }, []);
 
   const run = useCallback(
-    async (mode: 'initial' | 'refresh') => {
+    async (mode: 'initial' | 'refresh' | 'background') => {
       if (!enabled) {
         setState((current) => ({ ...current, loading: false }));
         return;
       }
       setState((current) => ({
         ...current,
+        // 'background' shows nothing at all: the data already on screen stays put and
+        // is swapped when the response lands. Only a pull-to-refresh, which the user
+        // performed deliberately, spins the RefreshControl.
         loading: mode === 'initial' && current.data === null,
         refreshing: mode === 'refresh',
-        error: mode === 'refresh' ? current.error : null,
+        error: mode === 'initial' ? null : current.error,
       }));
 
       try {
@@ -123,7 +126,7 @@ export function useAsyncData<T>(fetcher: () => Promise<T>, deps: unknown[], opti
         return;
       }
       if (enabled) {
-        void run('refresh');
+        void run('background');
       }
     }, [enabled, run]),
   );

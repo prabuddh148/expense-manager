@@ -92,10 +92,20 @@ apiClient.interceptors.response.use(
       config.headers.set('Authorization', `Bearer ${fresh}`);
       return apiClient.request(config as AxiosRequestConfig);
     } catch (refreshError) {
-      // The refresh token is expired, revoked or reused - the session is over.
-      setTokens(null);
-      await clearTokens();
-      onSessionExpired?.();
+      // Only a refusal from the server means the session is really over. A refresh that
+      // failed because the request never landed - timeout, no signal, server asleep -
+      // must leave the tokens alone, otherwise a bad moment of connectivity signs the
+      // user out permanently and they have to log in again on next launch.
+      const refused =
+        axios.isAxiosError(refreshError) &&
+        refreshError.response !== undefined &&
+        [400, 401, 403].includes(refreshError.response.status);
+
+      if (refused) {
+        setTokens(null);
+        await clearTokens();
+        onSessionExpired?.();
+      }
       return Promise.reject(refreshError);
     }
   },

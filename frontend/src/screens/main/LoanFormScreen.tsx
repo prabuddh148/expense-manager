@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { loanApi } from '../../api';
-import { Button, DateTimeField, LoadingState, Screen, TextField } from '../../components';
+import { Button, DateTimeField, Screen, SkeletonPlanner, TextField } from '../../components';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useSubmit } from '../../hooks/useSubmit';
 import { AppStackParamList } from '../../navigation/types';
@@ -76,7 +76,7 @@ export function LoanFormScreen({ navigation, route }: Props) {
   if (isEditing && existing.loading) {
     return (
       <Screen>
-        <LoadingState label="Loading loan" />
+        <SkeletonPlanner rows={3} />
       </Screen>
     );
   }

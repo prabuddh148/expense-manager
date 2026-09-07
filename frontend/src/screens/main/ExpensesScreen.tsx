@@ -23,7 +23,7 @@ import {
   EmptyState,
   ErrorState,
   FloatingActionButton,
-  LoadingState,
+  SkeletonList,
   Screen,
 } from '../../components';
 import { AppStackParamList } from '../../navigation/types';
@@ -310,7 +310,7 @@ export function ExpensesScreen() {
   if (loading && items.length === 0) {
     return (
       <Screen edges={['bottom']}>
-        <LoadingState label="Loading expenses" />
+        <SkeletonList rows={7} />
       </Screen>
     );
   }

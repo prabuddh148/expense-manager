@@ -8,7 +8,7 @@ import {
   Button,
   Card,
   DonutChart,
-  LoadingState,
+  SkeletonPlanner,
   ProgressBar,
   Screen,
   SectionHeader,
@@ -127,7 +127,7 @@ export function SalaryPlannerEditorScreen({ navigation, route }: Props) {
   if (isEditing && existing.loading) {
     return (
       <Screen>
-        <LoadingState label="Loading plan" />
+        <SkeletonPlanner rows={4} />
       </Screen>
     );
   }

@@ -1,4 +1,4 @@
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
@@ -11,15 +11,15 @@ import {
   EmptyState,
   ErrorState,
   FloatingActionButton,
-  LoadingState,
   ProgressBar,
   Screen,
+  SkeletonPlanner,
 } from '../../components';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useSubmit } from '../../hooks/useSubmit';
 import { AppStackParamList } from '../../navigation/types';
 import { useToast } from '../../store/ToastContext';
-import { useTheme } from '../../theme';
+import { colorForIndex, useTheme } from '../../theme';
 import { SalaryPlanner } from '../../types/api';
 import { formatMoney, formatPercent } from '../../utils/format';
 
@@ -38,13 +38,6 @@ export function SalaryPlannerScreen() {
 
   const [deleting, setDeleting] = useState<SalaryPlanner | null>(null);
   const remove = useSubmit((id: number) => plannerApi.remove(id));
-
-  useFocusEffect(
-    useCallback(() => {
-      void refresh();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []),
-  );
 
   const renderItem = useCallback(
     ({ item }: { item: SalaryPlanner }) => (
@@ -75,26 +68,42 @@ export function SalaryPlannerScreen() {
           </Pressable>
         </View>
 
-        <View style={{ marginTop: spacing.lg }}>
-          <ProgressBar
-            percentage={item.allocatedPercentage}
-            overflow={item.overAllocated}
-            label={`${formatMoney(item.totalAllocated)} allocated`}
-            trailing={formatPercent(item.allocatedPercentage)}
+        {/* A stacked bar of the sections themselves, so the split is readable before
+            opening the plan. */}
+        {item.items.length > 0 ? (
+          <View style={[styles.stack, { marginTop: spacing.lg }]}>
+            {item.items.map((section, index) => (
+              <View
+                key={section.id}
+                style={{
+                  flex: Math.max(section.amount, 1),
+                  backgroundColor: colorForIndex(index),
+                }}
+              />
+            ))}
+            {item.remainingAmount > 0 ? (
+              <View style={{ flex: item.remainingAmount, backgroundColor: colors.surfaceAlt }} />
+            ) : null}
+          </View>
+        ) : (
+          <View style={{ marginTop: spacing.lg }}>
+            <ProgressBar
+              percentage={item.allocatedPercentage}
+              overflow={item.overAllocated}
+              trailing={formatPercent(item.allocatedPercentage)}
+            />
+          </View>
+        )}
+
+        <View style={[styles.figures, { marginTop: spacing.md }]}>
+          <PlanFigure label="SALARY" value={formatMoney(item.totalSalary)} />
+          <PlanFigure label="ALLOCATED" value={formatMoney(item.totalAllocated)} />
+          <PlanFigure
+            label={item.overAllocated ? 'OVER BY' : 'UNALLOCATED'}
+            value={formatMoney(Math.abs(item.remainingAmount))}
+            color={item.overAllocated ? colors.danger : colors.success}
+            align="right"
           />
-          <Text
-            style={[
-              typography.caption,
-              {
-                color: item.overAllocated ? colors.danger : colors.success,
-                marginTop: spacing.sm,
-              },
-            ]}
-          >
-            {item.overAllocated
-              ? `Over-allocated by ${formatMoney(Math.abs(item.remainingAmount))}`
-              : `${formatMoney(item.remainingAmount)} unallocated`}
-          </Text>
         </View>
       </Card>
     ),
@@ -104,7 +113,7 @@ export function SalaryPlannerScreen() {
   if (loading) {
     return (
       <Screen>
-        <LoadingState label="Loading plans" />
+        <SkeletonPlanner />
       </Screen>
     );
   }
@@ -127,6 +136,17 @@ export function SalaryPlannerScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
+        }
+        ListHeaderComponent={
+          (data ?? []).length > 0 ? (
+            <View style={{ marginBottom: spacing.lg }}>
+              <Text style={[typography.title, { color: colors.text }]}>Salary planner</Text>
+              <Text style={[typography.caption, { color: colors.textMuted, marginTop: 4 }]}>
+                {(data ?? []).length} {(data ?? []).length === 1 ? 'plan' : 'plans'} · tap one to
+                preview, share or export
+              </Text>
+            </View>
+          ) : null
         }
         ListEmptyComponent={
           <EmptyState
@@ -165,7 +185,36 @@ export function SalaryPlannerScreen() {
   );
 }
 
+/** One labelled figure in the salary / allocated / unallocated row. */
+function PlanFigure({
+  label,
+  value,
+  color,
+  align = 'left',
+}: {
+  label: string;
+  value: string;
+  color?: string;
+  align?: 'left' | 'right';
+}) {
+  const { colors, typography } = useTheme();
+  return (
+    <View style={[styles.flex, align === 'right' ? styles.alignRight : null]}>
+      <Text style={[typography.caption, { color: colors.textMuted, fontSize: 10 }]}>{label}</Text>
+      <Text
+        style={[typography.heading, { color: color ?? colors.text, marginTop: 3 }]}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  alignRight: { alignItems: 'flex-end' },
+  figures: { flexDirection: 'row', alignItems: 'flex-start' },
+  stack: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center' },
 });

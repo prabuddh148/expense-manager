@@ -10,9 +10,12 @@ import React, {
 import {
   applyApiBaseUrl,
   authApi,
+  clearCachedUser,
   clearTokens,
   hydrateTokensFromStorage,
   loadApiBaseUrl,
+  loadCachedUser,
+  saveCachedUser,
   saveTokens,
   setSessionExpiredHandler,
   setTokens,
@@ -49,13 +52,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     setRefreshTokenValue(session.refreshToken);
     setUser(session.user);
+    void saveCachedUser(session.user);
     setSessionExpired(false);
     setStatus('authenticated');
   }, []);
 
   const endSession = useCallback(async (expired: boolean) => {
     setTokens(null);
-    await clearTokens();
+    await Promise.all([clearTokens(), clearCachedUser()]);
     setRefreshTokenValue(null);
     setUser(null);
     setSessionExpired(expired);
@@ -70,33 +74,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setSessionExpiredHandler(null);
   }, [endSession]);
 
-  /** Cold start: restore the keystore tokens and confirm them against the server. */
+  /**
+   * Cold start. Everything that decides which screen to show is read from the device,
+   * so the splash lasts as long as a keystore read rather than a network round trip.
+   *
+   * The old flow awaited /auth/me before letting anyone in, which meant the splash sat
+   * there for the API's cold start - and worse, treated a failed request as "signed
+   * out" and wiped the session. Now the server only ever confirms what the device
+   * already decided, in the background, and a network failure changes nothing.
+   */
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
-      // Must come first: a saved host override decides where /auth/me is even sent.
-      applyApiBaseUrl(await loadApiBaseUrl());
+      const [apiBaseUrl, stored, cachedUser] = await Promise.all([
+        loadApiBaseUrl(),
+        hydrateTokensFromStorage(),
+        loadCachedUser<User>(),
+      ]);
+      applyApiBaseUrl(apiBaseUrl);
 
-      const stored = await hydrateTokensFromStorage();
+      if (cancelled) return;
+
       if (!stored) {
-        if (!cancelled) setStatus('unauthenticated');
+        setStatus('unauthenticated');
         return;
       }
+
       setRefreshTokenValue(stored.refreshToken);
-      try {
-        const me = await authApi.me();
-        if (!cancelled) {
-          setUser(me);
-          setStatus('authenticated');
+
+      // A stored refresh token is enough to enter the app. The access token may well be
+      // expired after a few hours away; the interceptor renews it on the first request.
+      setUser(cachedUser);
+      setStatus('authenticated');
+
+      // Background confirmation. Nothing here blocks the UI, and only an explicit
+      // refusal from the server ends the session - handled by setSessionExpiredHandler.
+      void (async () => {
+        try {
+          const me = await authApi.me();
+          if (!cancelled) {
+            setUser(me);
+            void saveCachedUser(me);
+          }
+        } catch {
+          // Offline or server asleep: keep the cached profile and stay signed in.
         }
-      } catch {
-        // The interceptor already tried to refresh; getting here means it could not.
-        if (!cancelled) {
-          setUser(null);
-          setStatus('unauthenticated');
-        }
-      }
+      })();
     })();
 
     return () => {

@@ -10,6 +10,7 @@ export * from './OfflineBanner';
 export * from './ProgressBar';
 export * from './Screen';
 export * from './SectionHeader';
+export * from './Skeleton';
 export * from './StateViews';
 export * from './TextField';
 export * from './charts/BarChart';

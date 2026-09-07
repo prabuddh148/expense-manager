@@ -4,7 +4,7 @@ import React, { useCallback } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { dashboardApi } from '../../api';
+import { categoryApi, dashboardApi } from '../../api';
 import {
   BalanceCard,
   BarChart,
@@ -14,11 +14,12 @@ import {
   EmptyState,
   ErrorState,
   LineChart,
-  LoadingState,
   OfflineBanner,
   ProgressBar,
   Screen,
   SectionHeader,
+  SkeletonCategoryList,
+  SkeletonDashboard,
 } from '../../components';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { AppStackParamList } from '../../navigation/types';
@@ -41,10 +42,23 @@ export function DashboardScreen() {
     { cacheKey: 'dashboard' },
   );
 
+  // Fired alongside the dashboard rather than after it, and its own skeleton covers the
+  // gap - the screen never waits on this to render.
+  const categoriesFetcher = useCallback(() => categoryApi.list(), []);
+  const { data: categories, loading: categoriesLoading } = useAsyncData(categoriesFetcher, [], {
+    cacheKey: 'categories',
+  });
+
+  // Only categories with a budget can have a meaningful remaining figure.
+  const budgetedCategories = (categories ?? [])
+    .filter((category) => category.allocatedAmount > 0)
+    .sort((a, b) => a.remainingAmount - b.remainingAmount)
+    .slice(0, 5);
+
   if (loading) {
     return (
       <Screen edges={['bottom']}>
-        <LoadingState label="Loading your dashboard" />
+        <SkeletonDashboard />
       </Screen>
     );
   }
@@ -214,6 +228,64 @@ export function DashboardScreen() {
       ) : null}
 
       <SectionHeader
+        title="Category budgets"
+        actionLabel="Manage"
+        onAction={() => navigation.navigate('Categories')}
+        style={{ marginTop: spacing.xl }}
+      />
+      {categoriesLoading ? (
+        <SkeletonCategoryList rows={3} />
+      ) : budgetedCategories.length > 0 ? (
+        <Card padded={false}>
+          {budgetedCategories.map((category, index) => (
+            <View
+              key={category.id}
+              style={[
+                styles.categoryRow,
+                {
+                  padding: spacing.lg,
+                  borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
+                  borderTopColor: colors.border,
+                },
+              ]}
+            >
+              <View
+                style={[styles.dot, { backgroundColor: category.color ?? colors.primary }]}
+              />
+              <View style={[styles.flex, { marginLeft: spacing.md }]}>
+                <Text style={[typography.body, { color: colors.text }]} numberOfLines={1}>
+                  {category.name}
+                </Text>
+                <Text style={[typography.caption, { color: colors.textMuted, marginTop: 2 }]}>
+                  {formatMoney(category.spentAmount)} of {formatMoney(category.allocatedAmount)}
+                </Text>
+              </View>
+              <View style={styles.alignRight}>
+                <Text
+                  style={[
+                    typography.heading,
+                    { color: category.overspent ? colors.danger : colors.success },
+                  ]}
+                >
+                  {category.overspent ? '-' : ''}
+                  {formatMoney(Math.abs(category.remainingAmount))}
+                </Text>
+                <Text style={[typography.caption, { color: colors.textMuted, fontSize: 10 }]}>
+                  {category.overspent ? 'OVER' : 'LEFT'}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </Card>
+      ) : (
+        <Card>
+          <Text style={[typography.body, { color: colors.textMuted }]}>
+            Give your categories a monthly budget to track what is left in each one.
+          </Text>
+        </Card>
+      )}
+
+      <SectionHeader
         title="Loans & EMI"
         actionLabel="Manage"
         onAction={() => navigation.navigate('Tabs', { screen: 'EmiTab' })}
@@ -340,6 +412,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center' },
   row: { flexDirection: 'row', alignItems: 'flex-start' },
+  categoryRow: { flexDirection: 'row', alignItems: 'center' },
+  alignRight: { alignItems: 'flex-end' },
   quickRow: { flexDirection: 'row', gap: 10 },
   tile: { flex: 1, alignItems: 'center', borderWidth: StyleSheet.hairlineWidth },
   donutRow: { flexDirection: 'row', alignItems: 'center' },

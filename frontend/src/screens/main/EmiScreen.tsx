@@ -1,4 +1,4 @@
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -19,7 +19,7 @@ import {
   EmptyState,
   ErrorState,
   FloatingActionButton,
-  LoadingState,
+  SkeletonList,
   ProgressBar,
   Screen,
 } from '../../components';
@@ -46,13 +46,6 @@ export function EmiScreen() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
-  useFocusEffect(
-    useCallback(() => {
-      void refresh();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []),
-  );
 
   const loans = data ?? [];
   const outstanding = loans
@@ -241,7 +234,7 @@ export function EmiScreen() {
   if (loading) {
     return (
       <Screen edges={['bottom']}>
-        <LoadingState label="Loading loans" />
+        <SkeletonList rows={4} />
       </Screen>
     );
   }

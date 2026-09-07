@@ -1,4 +1,3 @@
-import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
@@ -11,7 +10,7 @@ import {
   ConfirmDialog,
   EmptyState,
   ErrorState,
-  LoadingState,
+  SkeletonPlanner,
   ProgressBar,
   Screen,
   SectionHeader,
@@ -47,12 +46,12 @@ export function LoanDetailScreen({ navigation, route }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useFocusEffect(reloadAll);
+  // useAsyncData already refetches each of these on focus.
 
   if (loan.loading) {
     return (
       <Screen>
-        <LoadingState label="Loading loan" />
+        <SkeletonPlanner rows={3} />
       </Screen>
     );
   }

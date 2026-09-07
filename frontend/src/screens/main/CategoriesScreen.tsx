@@ -13,7 +13,7 @@ import {
   EmptyState,
   ErrorState,
   FloatingActionButton,
-  LoadingState,
+  SkeletonCategoryList,
   ProgressBar,
   Screen,
   TextField,
@@ -125,19 +125,22 @@ export function CategoriesScreen() {
             percentage={item.usedPercentage}
             color={item.color ?? colors.primary}
             overflow={item.overspent}
-            label={`${formatMoney(item.spentAmount)} of ${formatMoney(item.allocatedAmount)}`}
             trailing={formatPercent(item.usedPercentage)}
           />
-          <Text
-            style={[
-              typography.caption,
-              { color: item.overspent ? colors.danger : colors.success, marginTop: spacing.sm },
-            ]}
-          >
-            {item.overspent
-              ? `Over budget by ${formatMoney(Math.abs(item.remainingAmount))}`
-              : `${formatMoney(item.remainingAmount)} remaining`}
-          </Text>
+
+          {/* Budget, spent and remaining side by side rather than buried in a sentence,
+              so the three numbers can be compared at a glance. */}
+          <View style={[styles.figures, { marginTop: spacing.md }]}>
+            <Figure label="BUDGET" value={formatMoney(item.allocatedAmount)} />
+            <Figure label="SPENT" value={formatMoney(item.spentAmount)} />
+            <Figure
+              label={item.overspent ? 'OVER BY' : 'REMAINING'}
+              value={formatMoney(Math.abs(item.remainingAmount))}
+              // The one number people look for, so it carries the colour.
+              color={item.overspent ? colors.danger : colors.success}
+              align="right"
+            />
+          </View>
         </View>
       </Card>
     ),
@@ -147,7 +150,7 @@ export function CategoriesScreen() {
   if (loading) {
     return (
       <Screen>
-        <LoadingState label="Loading categories" />
+        <SkeletonCategoryList />
       </Screen>
     );
   }
@@ -162,6 +165,10 @@ export function CategoriesScreen() {
 
   const totalBudget = (data ?? []).reduce((sum, item) => sum + item.allocatedAmount, 0);
   const totalSpent = (data ?? []).reduce((sum, item) => sum + item.spentAmount, 0);
+  // Summed from the server's per-category figures rather than recomputed, so this can
+  // never disagree with the rows underneath it.
+  const totalRemaining = (data ?? []).reduce((sum, item) => sum + item.remainingAmount, 0);
+  const overspentCount = (data ?? []).filter((item) => item.overspent).length;
 
   return (
     <Screen padded={false}>
@@ -177,22 +184,34 @@ export function CategoriesScreen() {
         ListHeaderComponent={
           (data ?? []).length > 0 ? (
             <Card style={{ marginBottom: spacing.lg }}>
-              <View style={styles.row}>
-                <View style={styles.flex}>
-                  <Text style={[typography.caption, { color: colors.textMuted }]}>
-                    TOTAL BUDGETED
-                  </Text>
-                  <Text style={[typography.title, { color: colors.text }]}>
-                    {formatMoney(totalBudget)}
-                  </Text>
-                </View>
-                <View style={styles.flex}>
-                  <Text style={[typography.caption, { color: colors.textMuted }]}>SPENT</Text>
-                  <Text style={[typography.title, { color: colors.text }]}>
-                    {formatMoney(totalSpent)}
-                  </Text>
-                </View>
+              <Text style={[typography.caption, { color: colors.textMuted }]}>
+                REMAINING ACROSS ALL CATEGORIES
+              </Text>
+              <Text
+                style={[
+                  typography.display,
+                  {
+                    color: totalRemaining < 0 ? colors.danger : colors.text,
+                    marginTop: spacing.xs,
+                  },
+                ]}
+              >
+                {formatMoney(totalRemaining)}
+              </Text>
+
+              <View style={[styles.figures, { marginTop: spacing.lg }]}>
+                <Figure label="TOTAL BUDGET" value={formatMoney(totalBudget)} />
+                <Figure label="TOTAL SPENT" value={formatMoney(totalSpent)} align="right" />
               </View>
+
+              {overspentCount > 0 ? (
+                <Text
+                  style={[typography.caption, { color: colors.danger, marginTop: spacing.md }]}
+                >
+                  {overspentCount} {overspentCount === 1 ? 'category is' : 'categories are'} over
+                  budget
+                </Text>
+              ) : null}
             </Card>
           ) : null
         }
@@ -320,8 +339,36 @@ export function CategoriesScreen() {
   );
 }
 
+/** One labelled figure in a budget / spent / remaining row. */
+function Figure({
+  label,
+  value,
+  color,
+  align = 'left',
+}: {
+  label: string;
+  value: string;
+  color?: string;
+  align?: 'left' | 'right';
+}) {
+  const { colors, typography } = useTheme();
+  return (
+    <View style={[styles.flex, align === 'right' ? styles.alignRight : null]}>
+      <Text style={[typography.caption, { color: colors.textMuted, fontSize: 10 }]}>{label}</Text>
+      <Text
+        style={[typography.heading, { color: color ?? colors.text, marginTop: 3 }]}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  alignRight: { alignItems: 'flex-end' },
+  figures: { flexDirection: 'row', alignItems: 'flex-start' },
   row: { flexDirection: 'row', alignItems: 'center' },
   bubble: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

@@ -9,7 +9,7 @@ import {
   Card,
   ConfirmDialog,
   ErrorState,
-  LoadingState,
+  SkeletonPlanner,
   Screen,
 } from '../../components';
 import { useAsyncData } from '../../hooks/useAsyncData';
@@ -38,7 +38,7 @@ export function ExpenseDetailScreen({ navigation, route }: Props) {
   if (loading) {
     return (
       <Screen>
-        <LoadingState label="Loading expense" />
+        <SkeletonPlanner rows={2} />
       </Screen>
     );
   }

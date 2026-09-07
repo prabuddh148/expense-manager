@@ -13,7 +13,7 @@ import {
   EmptyState,
   ErrorState,
   LineChart,
-  LoadingState,
+  SkeletonDashboard,
   Screen,
   SectionHeader,
 } from '../../components';
@@ -104,7 +104,7 @@ export function AnalyticsScreen() {
   if (loading) {
     return (
       <Screen edges={['bottom']}>
-        <LoadingState label="Crunching the numbers" />
+        <SkeletonDashboard />
       </Screen>
     );
   }

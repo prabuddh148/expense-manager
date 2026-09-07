@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { categoryApi, expenseApi } from '../../api';
-import { Button, DateTimeField, LoadingState, Screen, TextField } from '../../components';
+import { Button, DateTimeField, Screen, SkeletonPlanner, TextField } from '../../components';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useSubmit } from '../../hooks/useSubmit';
 import { AppStackParamList } from '../../navigation/types';
@@ -85,7 +85,7 @@ export function AddExpenseScreen({ navigation, route }: Props) {
   if (isEditing && existing.loading) {
     return (
       <Screen>
-        <LoadingState label="Loading expense" />
+        <SkeletonPlanner rows={2} />
       </Screen>
     );
   }

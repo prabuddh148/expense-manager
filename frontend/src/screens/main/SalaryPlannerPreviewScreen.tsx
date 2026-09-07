@@ -10,7 +10,7 @@ import {
   ChartLegend,
   DonutChart,
   ErrorState,
-  LoadingState,
+  SkeletonPlanner,
   ProgressBar,
   Screen,
 } from '../../components';
@@ -55,7 +55,7 @@ export function SalaryPlannerPreviewScreen({ navigation, route }: Props) {
   if (loading) {
     return (
       <Screen>
-        <LoadingState label="Loading plan" />
+        <SkeletonPlanner rows={4} />
       </Screen>
     );
   }

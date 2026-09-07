@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { loanApi } from '../../api';
-import { Button, Card, DateTimeField, LoadingState, Screen, TextField } from '../../components';
+import { Button, Card, DateTimeField, Screen, SkeletonPlanner, TextField } from '../../components';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useSubmit } from '../../hooks/useSubmit';
 import { AppStackParamList } from '../../navigation/types';
@@ -78,7 +78,7 @@ export function EmiPaymentScreen({ navigation, route }: Props) {
   if (loan.loading || (isEditing && payments.loading)) {
     return (
       <Screen>
-        <LoadingState label="Loading" />
+        <SkeletonPlanner rows={2} />
       </Screen>
     );
   }

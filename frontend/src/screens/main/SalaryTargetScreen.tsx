@@ -8,7 +8,7 @@ import {
   Card,
   DateTimeField,
   ErrorState,
-  LoadingState,
+  SkeletonPlanner,
   ProgressBar,
   Screen,
   SectionHeader,
@@ -70,7 +70,7 @@ export function SalaryTargetScreen() {
   if (loading) {
     return (
       <Screen>
-        <LoadingState label="Loading salary" />
+        <SkeletonPlanner rows={2} />
       </Screen>
     );
   }

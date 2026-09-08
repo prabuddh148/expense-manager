@@ -54,7 +54,9 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "./plugins/withSmsReader",
+      "expo-notifications"
     ],
     "extra": {
       "eas": {

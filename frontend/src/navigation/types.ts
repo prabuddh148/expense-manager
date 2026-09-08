@@ -10,6 +10,7 @@ export type MainTabParamList = {
   ExpensesTab: undefined;
   EmiTab: undefined;
   MoneyTrackerTab: undefined;
+  SmsTab: undefined;
   AnalyticsTab: undefined;
   ProfileTab: undefined;
 };

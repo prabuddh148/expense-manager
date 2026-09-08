@@ -318,3 +318,68 @@ export type MoneyTrackerSummary = {
 
 /** Where an expense came from, so the list can badge its origin. */
 export type RecordSource = 'MANUAL' | 'MONEY_TRACKER' | 'SMS';
+
+/* ------------------------------------------------------------------ *
+ * SMS transactions
+ *
+ * Parsed on the device; only these structured fields are ever sent, so
+ * message text does not leave the phone. A detection is inert until the
+ * user picks a category and asks for it to become an expense.
+ * ------------------------------------------------------------------ */
+
+export type SmsTransactionType = 'DEBIT' | 'CREDIT';
+
+export type SmsTransactionStatus =
+  | 'UNCATEGORIZED'
+  | 'CATEGORIZED'
+  | 'ADDED_TO_EXPENSE'
+  | 'IGNORED';
+
+export type SmsTransactionPayload = {
+  bankName: string;
+  accountIdentifier: string | null;
+  amount: number;
+  transactionType: SmsTransactionType;
+  transactionDate: string;
+  transactionTime: string | null;
+  merchant: string | null;
+  smsReference: string | null;
+  /** Left null so the server owns the single implementation of the fingerprint. */
+  dedupeHash: string | null;
+};
+
+export type SmsTransaction = {
+  id: number;
+  bankName: string;
+  accountIdentifier: string | null;
+  amount: number;
+  transactionType: SmsTransactionType;
+  transactionDate: string;
+  transactionTime: string | null;
+  merchant: string | null;
+  smsReference: string | null;
+  categoryId: number | null;
+  categoryName: string | null;
+  categoryColor: string | null;
+  categoryIcon: string | null;
+  status: SmsTransactionStatus;
+  linkedExpenseId: number | null;
+  /** True once a category is chosen, which is what unlocks Add to expense. */
+  readyForExpense: boolean;
+  createdAt: string;
+  processedAt: string | null;
+};
+
+export type SmsBankSummary = {
+  bank: string;
+  total: number;
+  uncategorized: number;
+  debitTotal: number;
+  creditTotal: number;
+};
+
+export type SmsImportResult = {
+  imported: number;
+  skipped: number;
+  transactions: SmsTransaction[];
+};

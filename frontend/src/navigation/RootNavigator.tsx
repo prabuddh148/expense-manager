@@ -3,24 +3,67 @@ import {
   DefaultTheme,
   NavigationContainer,
   Theme,
+  useNavigationContainerRef,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import React, { useMemo, useState } from 'react';
+import * as Notifications from 'expo-notifications';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useAuth } from '../store/AuthContext';
 import { useTheme } from '../theme';
+import { SMS_REMINDER_TYPE, syncPendingReminder } from '../utils/notifications';
 import { AuthStack } from './AuthStack';
 import { AppStack } from './AppStack';
 import { SplashScreen } from '../screens/SplashScreen';
+import type { NavigatorScreenParams } from '@react-navigation/native';
+
 import { AppStackParamList } from './types';
 
-const RootStack = createNativeStackNavigator();
+/** The three top-level subtrees. Typed so the notification deep link is checked. */
+type RootStackParamList = {
+  Splash: undefined;
+  App: NavigatorScreenParams<AppStackParamList>;
+  Auth: undefined;
+};
+
+const RootStack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const { status } = useAuth();
   const { colors, isDark } = useTheme();
   const [splashDone, setSplashDone] = useState(false);
+  const navigationRef = useNavigationContainerRef<RootStackParamList>();
+
+  /**
+   * Tapping the daily reminder should land on the transactions it is about, not just
+   * open the app. Handles both a tap while running and a cold start from the
+   * notification, and does nothing until the session is restored - navigating into the
+   * tabs before they are mounted would throw.
+   */
+  useEffect(() => {
+    if (status !== 'authenticated') return undefined;
+
+    const openSmsTab = (response: Notifications.NotificationResponse) => {
+      if (response.notification.request.content.data?.type !== SMS_REMINDER_TYPE) return;
+      navigationRef.navigate('App', { screen: 'Tabs', params: { screen: 'SmsTab' } });
+    };
+
+    // A notification that launched the app is waiting here rather than in the listener.
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) openSmsTab(response);
+    });
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(openSmsTab);
+    return () => subscription.remove();
+  }, [navigationRef, status]);
+
+  // Keep the reminder in step with what is actually outstanding.
+  useEffect(() => {
+    if (status === 'authenticated') {
+      void syncPendingReminder();
+    }
+  }, [status]);
 
   // React Navigation keeps its own theme for card backgrounds and the status bar.
   const navigationTheme = useMemo<Theme>(() => {
@@ -41,7 +84,7 @@ export function RootNavigator() {
 
   return (
     <View style={styles.flex}>
-      <NavigationContainer theme={navigationTheme}>
+      <NavigationContainer theme={navigationTheme} ref={navigationRef}>
         <RootStack.Navigator screenOptions={{ headerShown: false }}>
           {status === 'loading' ? (
             <RootStack.Screen name="Splash" component={SplashScreen} />

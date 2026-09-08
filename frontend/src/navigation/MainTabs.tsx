@@ -10,6 +10,7 @@ import { DashboardScreen } from '../screens/main/DashboardScreen';
 import { EmiScreen } from '../screens/main/EmiScreen';
 import { ExpensesScreen } from '../screens/main/ExpensesScreen';
 import { MoneyTrackerScreen } from '../screens/main/MoneyTrackerScreen';
+import { SmsTransactionsScreen } from '../screens/main/SmsTransactionsScreen';
 import { ProfileScreen } from '../screens/main/ProfileScreen';
 import { useTheme } from '../theme';
 import { MainTabParamList } from './types';
@@ -21,6 +22,7 @@ const ICONS: Record<keyof MainTabParamList, keyof typeof Ionicons.glyphMap> = {
   ExpensesTab: 'receipt-outline',
   EmiTab: 'card-outline',
   MoneyTrackerTab: 'swap-horizontal-outline',
+  SmsTab: 'chatbubbles-outline',
   AnalyticsTab: 'stats-chart-outline',
   ProfileTab: 'person-circle-outline',
 };
@@ -30,6 +32,7 @@ const ACTIVE_ICONS: Record<keyof MainTabParamList, keyof typeof Ionicons.glyphMa
   ExpensesTab: 'receipt',
   EmiTab: 'card',
   MoneyTrackerTab: 'swap-horizontal',
+  SmsTab: 'chatbubbles',
   AnalyticsTab: 'stats-chart',
   ProfileTab: 'person-circle',
 };
@@ -121,6 +124,7 @@ export function MainTabs() {
           component={MoneyTrackerScreen}
           options={{ title: "Money" }}
         />
+        <Tab.Screen name="SmsTab" component={SmsTransactionsScreen} options={{ title: "SMS" }} />
         <Tab.Screen name="AnalyticsTab" component={AnalyticsScreen} options={{ title: 'Analytics' }} />
         <Tab.Screen name="ProfileTab" component={ProfileScreen} options={{ title: 'Profile' }} />
       </Tab.Navigator>

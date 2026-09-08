@@ -7,6 +7,7 @@ import com.expensemanager.entity.User;
 import com.expensemanager.exception.ResourceNotFoundException;
 import com.expensemanager.repository.EmiPaymentRepository;
 import com.expensemanager.repository.ExpenseRepository;
+import com.expensemanager.repository.SalaryAdjustmentRepository;
 import com.expensemanager.repository.SalaryRepository;
 import com.expensemanager.security.CurrentUser;
 import com.expensemanager.util.DateRanges;
@@ -29,15 +30,18 @@ public class SalaryService {
     private final SalaryRepository salaryRepository;
     private final ExpenseRepository expenseRepository;
     private final EmiPaymentRepository emiPaymentRepository;
+    private final SalaryAdjustmentRepository salaryAdjustmentRepository;
     private final CurrentUser currentUser;
 
     public SalaryService(SalaryRepository salaryRepository,
                          ExpenseRepository expenseRepository,
                          EmiPaymentRepository emiPaymentRepository,
+                         SalaryAdjustmentRepository salaryAdjustmentRepository,
                          CurrentUser currentUser) {
         this.salaryRepository = salaryRepository;
         this.expenseRepository = expenseRepository;
         this.emiPaymentRepository = emiPaymentRepository;
+        this.salaryAdjustmentRepository = salaryAdjustmentRepository;
         this.currentUser = currentUser;
     }
 
@@ -107,12 +111,14 @@ public class SalaryService {
     private SalaryResponse emptyResponse(YearMonth period) {
         return new SalaryResponse(null, Money.ZERO, null, null,
                 period.getYear(), period.getMonthValue(),
-                null, Money.ZERO, Money.ZERO, Money.ZERO, null);
+                null, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, null);
     }
 
     private SalaryResponse toResponse(Salary salary) {
         DateRanges.Range range = DateRanges.ofMonth(salary.getPeriodYear(), salary.getPeriodMonth());
-        BigDecimal deductions = deductionsFor(salary.getUser().getId(), range.from(), range.to());
+        Long userId = salary.getUser().getId();
+        BigDecimal deductions = deductionsFor(userId, range.from(), range.to());
+        BigDecimal additions = additionsFor(userId, range.from(), range.to());
         BigDecimal amount = Money.scale(salary.getAmount());
         BigDecimal target = salary.getTargetAmount() == null ? null : Money.scale(salary.getTargetAmount());
 
@@ -123,11 +129,19 @@ public class SalaryService {
                 salary.getTargetDate(),
                 salary.getPeriodYear(),
                 salary.getPeriodMonth(),
+                // The target is about the salary itself, so one-off additions do not
+                // count towards it - only a real raise moves that needle.
                 target == null ? null : Money.subtract(target, amount),
                 target == null ? Money.ZERO : Money.cappedPercentage(amount, target),
                 deductions,
-                Money.subtract(amount, deductions),
+                additions,
+                Money.subtract(Money.add(amount, additions), deductions),
                 salary.getUpdatedAt());
+    }
+
+    /** Money credited on top of the salary in the window, e.g. a repayment received. */
+    public BigDecimal additionsFor(Long userId, LocalDate from, LocalDate to) {
+        return Money.scale(salaryAdjustmentRepository.sumForUserBetween(userId, from, to));
     }
 
     /** Expenses plus EMI instalments paid in the window. */

@@ -32,6 +32,7 @@ public class DashboardService {
     private final EmiPaymentRepository paymentRepository;
     private final ExpenseService expenseService;
     private final AnalyticsService analyticsService;
+    private final SalaryService salaryService;
     private final CurrentUser currentUser;
 
     public DashboardService(SalaryRepository salaryRepository,
@@ -40,6 +41,7 @@ public class DashboardService {
                             EmiPaymentRepository paymentRepository,
                             ExpenseService expenseService,
                             AnalyticsService analyticsService,
+                            SalaryService salaryService,
                             CurrentUser currentUser) {
         this.salaryRepository = salaryRepository;
         this.categoryRepository = categoryRepository;
@@ -47,6 +49,7 @@ public class DashboardService {
         this.paymentRepository = paymentRepository;
         this.expenseService = expenseService;
         this.analyticsService = analyticsService;
+        this.salaryService = salaryService;
         this.currentUser = currentUser;
     }
 
@@ -63,6 +66,11 @@ public class DashboardService {
         BigDecimal salaryAmount = salary.map(s -> Money.scale(s.getAmount())).orElse(Money.ZERO);
         BigDecimal target = salary.map(Salary::getTargetAmount).map(Money::scale).orElse(null);
 
+        // Money credited on top of the salary this month, e.g. a Money Tracker receivable
+        // the user chose to add on. Kept out of the salary figure itself so the stated
+        // salary and its target stay meaningful.
+        BigDecimal additions = salaryService.additionsFor(userId, range.from(), range.to());
+
         var salarySummary = new DashboardResponse.SalarySummary(
                 salaryAmount,
                 target,
@@ -70,7 +78,8 @@ public class DashboardService {
                 target == null ? Money.ZERO : Money.cappedPercentage(salaryAmount, target),
                 salary.map(Salary::getTargetDate).orElse(null),
                 analytics.totalDeductions(),
-                Money.subtract(salaryAmount, analytics.totalDeductions()));
+                additions,
+                Money.subtract(Money.add(salaryAmount, additions), analytics.totalDeductions()));
 
         BigDecimal budgeted = categoryRepository.findByUserIdOrderByNameAsc(userId).stream()
                 .map(Category::getAllocatedAmount)

@@ -9,6 +9,7 @@ import { AnalyticsScreen } from '../screens/main/AnalyticsScreen';
 import { DashboardScreen } from '../screens/main/DashboardScreen';
 import { EmiScreen } from '../screens/main/EmiScreen';
 import { ExpensesScreen } from '../screens/main/ExpensesScreen';
+import { MoneyTrackerScreen } from '../screens/main/MoneyTrackerScreen';
 import { ProfileScreen } from '../screens/main/ProfileScreen';
 import { useTheme } from '../theme';
 import { MainTabParamList } from './types';
@@ -19,6 +20,7 @@ const ICONS: Record<keyof MainTabParamList, keyof typeof Ionicons.glyphMap> = {
   DashboardTab: 'home-outline',
   ExpensesTab: 'receipt-outline',
   EmiTab: 'card-outline',
+  MoneyTrackerTab: 'swap-horizontal-outline',
   AnalyticsTab: 'stats-chart-outline',
   ProfileTab: 'person-circle-outline',
 };
@@ -27,6 +29,7 @@ const ACTIVE_ICONS: Record<keyof MainTabParamList, keyof typeof Ionicons.glyphMa
   DashboardTab: 'home',
   ExpensesTab: 'receipt',
   EmiTab: 'card',
+  MoneyTrackerTab: 'swap-horizontal',
   AnalyticsTab: 'stats-chart',
   ProfileTab: 'person-circle',
 };
@@ -71,6 +74,9 @@ export function MainTabs() {
         // Swipe is the point of moving the bar up here, so keep the pager enabled.
         screenOptions={({ route }) => ({
           swipeEnabled: true,
+          // Six tabs will not fit across a phone, so the bar scrolls instead of
+          // squeezing the labels down to nothing.
+          tabBarScrollEnabled: true,
           tabBarShowIcon: true,
           tabBarShowLabel: true,
           tabBarActiveTintColor: colors.primary,
@@ -83,7 +89,7 @@ export function MainTabs() {
             borderBottomWidth: StyleSheet.hairlineWidth,
             borderBottomColor: colors.border,
           },
-          tabBarItemStyle: { paddingVertical: 6, paddingHorizontal: 0 },
+          tabBarItemStyle: { paddingVertical: 6, paddingHorizontal: 4, width: 'auto', minWidth: 84 },
           tabBarIconStyle: { height: 22, marginBottom: 0 },
           tabBarLabelStyle: {
             fontSize: 10,
@@ -110,6 +116,11 @@ export function MainTabs() {
         <Tab.Screen name="DashboardTab" component={DashboardScreen} options={{ title: 'Home' }} />
         <Tab.Screen name="ExpensesTab" component={ExpensesScreen} options={{ title: 'Expenses' }} />
         <Tab.Screen name="EmiTab" component={EmiScreen} options={{ title: 'EMI' }} />
+        <Tab.Screen
+          name="MoneyTrackerTab"
+          component={MoneyTrackerScreen}
+          options={{ title: "Money" }}
+        />
         <Tab.Screen name="AnalyticsTab" component={AnalyticsScreen} options={{ title: 'Analytics' }} />
         <Tab.Screen name="ProfileTab" component={ProfileScreen} options={{ title: 'Profile' }} />
       </Tab.Navigator>

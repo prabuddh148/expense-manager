@@ -11,6 +11,7 @@ import { SalaryPlannerEditorScreen } from '../screens/main/SalaryPlannerEditorSc
 import { SalaryPlannerPreviewScreen } from '../screens/main/SalaryPlannerPreviewScreen';
 import { SalaryPlannerScreen } from '../screens/main/SalaryPlannerScreen';
 import { SalaryTargetScreen } from '../screens/main/SalaryTargetScreen';
+import { MoneyTrackerFormScreen } from '../screens/main/MoneyTrackerFormScreen';
 import { SettingsScreen } from '../screens/main/SettingsScreen';
 import { useTheme } from '../theme';
 import { MainTabs } from './MainTabs';
@@ -71,7 +72,12 @@ export function AppStack() {
         component={SalaryPlannerPreviewScreen}
         options={{ title: 'Preview & Export' }}
       />
-      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: "Settings" }} />
+      <Stack.Screen
+        name="MoneyTrackerForm"
+        component={MoneyTrackerFormScreen}
+        options={{ title: "Money Tracker" }}
+      />
     </Stack.Navigator>
   );
 }

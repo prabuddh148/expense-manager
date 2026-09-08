@@ -2,6 +2,8 @@ package com.expensemanager.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -57,6 +59,18 @@ public class Expense {
 
     @Column(name = "expense_time")
     private LocalTime time;
+
+    /**
+     * Where the expense came from. Nullable in the database so the rows that existed
+     * before this column did keep working; {@link #getSource()} reads those as MANUAL.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private RecordSource source;
+
+    /** Free-form origin detail, e.g. the bank and reference of the SMS behind it. */
+    @Column(name = "source_reference", length = 190)
+    private String sourceReference;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -145,6 +159,23 @@ public class Expense {
 
     public void setTime(LocalTime time) {
         this.time = time;
+    }
+
+    /** Rows written before the column existed have no value; they were all manual. */
+    public RecordSource getSource() {
+        return source == null ? RecordSource.MANUAL : source;
+    }
+
+    public void setSource(RecordSource source) {
+        this.source = source;
+    }
+
+    public String getSourceReference() {
+        return sourceReference;
+    }
+
+    public void setSourceReference(String sourceReference) {
+        this.sourceReference = sourceReference;
     }
 
     public Instant getCreatedAt() {

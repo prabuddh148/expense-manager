@@ -27,6 +27,7 @@ public record DashboardResponse(
             BigDecimal progressPercentage,
             LocalDate targetDate,
             BigDecimal totalDeductions,
+            BigDecimal totalAdditions,
             BigDecimal remainingAmount
     ) {}
 

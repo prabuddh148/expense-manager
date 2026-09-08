@@ -9,3 +9,4 @@ export * from './services/expenseApi';
 export * from './services/loanApi';
 export * from './services/analyticsApi';
 export * from './services/plannerApi';
+export * from './services/moneyTrackerApi';

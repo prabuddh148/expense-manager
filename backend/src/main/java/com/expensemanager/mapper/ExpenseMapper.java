@@ -2,6 +2,7 @@ package com.expensemanager.mapper;
 
 import com.expensemanager.dto.expense.ExpenseResponse;
 import com.expensemanager.entity.Category;
+import com.expensemanager.entity.RecordSource;
 import com.expensemanager.entity.Expense;
 import com.expensemanager.util.Money;
 import org.springframework.stereotype.Component;
@@ -30,6 +31,18 @@ public class ExpenseMapper {
                 expense.getDescription(),
                 expense.getDate(),
                 expense.getTime(),
+                expense.getSource(),
+                expense.getSourceReference(),
+                sourceLabel(expense.getSource()),
                 expense.getCreatedAt());
+    }
+
+    /** Null for ordinary expenses, so the client only badges the ones with a story. */
+    private static String sourceLabel(RecordSource source) {
+        return switch (source) {
+            case MONEY_TRACKER -> "Deducted";
+            case SMS -> "SMS";
+            case MANUAL -> null;
+        };
     }
 }

@@ -9,6 +9,7 @@ export type MainTabParamList = {
   DashboardTab: undefined;
   ExpensesTab: undefined;
   EmiTab: undefined;
+  MoneyTrackerTab: undefined;
   AnalyticsTab: undefined;
   ProfileTab: undefined;
 };
@@ -26,4 +27,5 @@ export type AppStackParamList = {
   SalaryPlannerEditor: { plannerId?: number } | undefined;
   SalaryPlannerPreview: { plannerId: number };
   Settings: undefined;
+  MoneyTrackerForm: { transactionId?: number } | undefined;
 };

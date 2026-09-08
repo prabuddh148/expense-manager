@@ -17,6 +17,8 @@ public record SalaryResponse(
         BigDecimal progressPercentage,
         /** Expenses plus EMI payments recorded in this month. */
         BigDecimal totalDeductions,
+        /** Money added on top of the salary this month, e.g. a repayment received. */
+        BigDecimal totalAdditions,
         BigDecimal remainingAmount,
         Instant updatedAt
 ) {}

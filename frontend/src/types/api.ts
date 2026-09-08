@@ -26,6 +26,8 @@ export type Salary = {
   difference: number | null;
   progressPercentage: number;
   totalDeductions: number;
+  /** Credited on top of the salary this month, e.g. a Money Tracker receivable. */
+  totalAdditions: number;
   remainingAmount: number;
   updatedAt: string | null;
 };
@@ -71,6 +73,10 @@ export type Expense = {
   description: string | null;
   date: string;
   time: string | null;
+  source: RecordSource;
+  sourceReference: string | null;
+  /** Badge for non-manual rows, e.g. "Deducted" or "SMS"; null for ordinary ones. */
+  sourceLabel: string | null;
   createdAt: string;
 };
 
@@ -193,6 +199,7 @@ export type Dashboard = {
     progressPercentage: number;
     targetDate: string | null;
     totalDeductions: number;
+    totalAdditions: number;
     remainingAmount: number;
   };
   expenses: {
@@ -259,3 +266,55 @@ export type ApiErrorBody = {
   path: string;
   fieldErrors?: Record<string, string>;
 };
+
+/* ------------------------------------------------------------------ *
+ * Money Tracker
+ *
+ * Deliberately separate from expenses: nothing here counts towards the
+ * salary until the user deducts or adds it on, at which point `action`
+ * records what happened and the linked id makes it reversible.
+ * ------------------------------------------------------------------ */
+
+export type MoneyTrackerType = 'PAY' | 'RECEIVE';
+export type MoneyTrackerStatus = 'PENDING' | 'COMPLETED' | 'ARCHIVED';
+export type MoneyTrackerAction = 'NONE' | 'DEDUCTED' | 'ADD_ON';
+
+export type MoneyTrackerTransaction = {
+  id: number;
+  title: string;
+  description: string | null;
+  amount: number;
+  type: MoneyTrackerType;
+  status: MoneyTrackerStatus;
+  action: MoneyTrackerAction;
+  date: string;
+  dueDate: string | null;
+  completedAt: string | null;
+  notes: string | null;
+  linkedExpenseId: number | null;
+  linkedAdjustmentId: number | null;
+  /** True while it is reflected in the salary and can be reversed. */
+  undoable: boolean;
+  overdue: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MoneyTrackerPayload = {
+  title: string;
+  description?: string | null;
+  amount: number;
+  type: MoneyTrackerType;
+  date?: string | null;
+  dueDate?: string | null;
+  notes?: string | null;
+};
+
+export type MoneyTrackerSummary = {
+  toPay: number;
+  toReceive: number;
+  pendingCount: number;
+};
+
+/** Where an expense came from, so the list can badge its origin. */
+export type RecordSource = 'MANUAL' | 'MONEY_TRACKER' | 'SMS';

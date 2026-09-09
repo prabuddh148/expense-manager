@@ -14,7 +14,10 @@ import { parseMessages, parseSms } from '../utils/smsParser';
 const LAST_SCAN_KEY = 'sms.last-scan-at';
 /** How far back the very first scan reaches. Older messages are history, not pending work. */
 const FIRST_SCAN_WINDOW_DAYS = 30;
+/** Matches the server's per-request ceiling; a backlog is drained in pages of this. */
 const MAX_PER_SCAN = 200;
+/** A stop on the drain loop, so a misbehaving watermark cannot spin forever. */
+const MAX_PAGES_PER_SCAN = 50;
 
 export type SmsPermissionState =
   | 'unsupported'
@@ -78,9 +81,17 @@ export function useSmsScanner() {
   }, [available]);
 
   /**
-   * Reads, parses and uploads. Guarded against overlapping runs, because the live
-   * listener and a manual pull can easily fire together and would otherwise send the
-   * same messages twice - harmless thanks to server-side dedup, but wasteful.
+   * Reads, parses and uploads everything that arrived since the watermark.
+   *
+   * The watermark only ever moves over messages the server has actually accepted, and
+   * it moves to the timestamp of the last message handled rather than to "now". Moving
+   * it to now was the bug this replaces: one pass reads at most MAX_PER_SCAN messages,
+   * so anything beyond that page was stepped over and never looked at again.
+   *
+   * A backlog larger than one page is therefore drained a page at a time instead of
+   * truncated. Guarded against overlapping runs, because the live listener and a manual
+   * pull can easily fire together and would otherwise send the same messages twice -
+   * harmless thanks to server-side dedup, but wasteful.
    */
   const scan = useCallback(async (): Promise<{ imported: number; skipped: number } | null> => {
     if (!available || !hasSmsPermission() || scanningRef.current) {
@@ -93,30 +104,55 @@ export function useSmsScanner() {
 
     try {
       const storedSince = await AsyncStorage.getItem(LAST_SCAN_KEY).catch(() => null);
-      const since = storedSince
-        ? Number(storedSince)
+      const stored = storedSince === null ? NaN : Number(storedSince);
+      let since = Number.isFinite(stored)
+        ? stored
         : Date.now() - FIRST_SCAN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
-      const messages = await readMessages(since, MAX_PER_SCAN);
-      const parsed = parseMessages(messages);
+      let imported = 0;
+      let skipped = 0;
+      let sawAnything = false;
 
-      if (parsed.length === 0) {
-        // Still move the watermark: these messages were looked at and were not transactions.
-        await AsyncStorage.setItem(LAST_SCAN_KEY, String(Date.now())).catch(() => {});
+      for (let page = 0; page < MAX_PAGES_PER_SCAN; page += 1) {
+        const messages = await readMessages(since, MAX_PER_SCAN);
+        if (messages.length === 0) break;
+
+        // Oldest first, so the last one is the furthest the watermark may travel.
+        const newest = messages[messages.length - 1].timestamp;
+        const parsed = parseMessages(messages);
+
+        // Chunked rather than sent whole: not every Android provider honours the LIMIT
+        // in the query, and one oversized batch is rejected outright by the server.
+        for (let i = 0; i < parsed.length; i += MAX_PER_SCAN) {
+          const result = await smsApi.import(parsed.slice(i, i + MAX_PER_SCAN));
+          imported += result.imported;
+          skipped += result.skipped;
+        }
+        sawAnything = true;
+
+        // Only now that the server has them, and only as far as we actually read.
+        // Never backwards: a build whose native side still returns newest first would
+        // otherwise drag the watermark back and re-read the same window every time.
+        if (newest <= since) break;
+        await AsyncStorage.setItem(LAST_SCAN_KEY, String(newest)).catch(() => {});
+
+        // A short page means the inbox is drained.
+        if (messages.length < MAX_PER_SCAN) break;
+        since = newest;
+      }
+
+      if (!sawAnything) {
         const empty = { imported: 0, skipped: 0 };
         setLastResult(empty);
         return empty;
       }
 
-      const result = await smsApi.import(parsed);
-      // Only advance once the server has them, so a failed upload is retried next time
-      // rather than skipped over.
-      await AsyncStorage.setItem(LAST_SCAN_KEY, String(Date.now())).catch(() => {});
-
-      const summary = { imported: result.imported, skipped: result.skipped };
+      const summary = { imported, skipped };
       setLastResult(summary);
       return summary;
     } catch (caught) {
+      // The watermark stays where the last accepted page left it, so a failure here
+      // costs a retry rather than the messages.
       setError(toAppError(caught).message);
       return null;
     } finally {
@@ -124,6 +160,17 @@ export function useSmsScanner() {
       setScanning(false);
     }
   }, [available]);
+
+  /**
+   * Forgets how far the scan has read, so the next one covers the full window again.
+   *
+   * Deleting a detection is documented as letting a later rescan find the message
+   * afresh, which the watermark would otherwise quietly prevent: the row goes but the
+   * scan never looks at that message again.
+   */
+  const resetWatermark = useCallback(async () => {
+    await AsyncStorage.removeItem(LAST_SCAN_KEY).catch(() => {});
+  }, []);
 
   /** Uploads a single message as it arrives, so new transactions appear on their own. */
   const handleIncoming = useCallback(
@@ -147,6 +194,7 @@ export function useSmsScanner() {
     error,
     requestPermission,
     scan,
+    resetWatermark,
     handleIncoming,
     subscribe: subscribeToSms,
   };

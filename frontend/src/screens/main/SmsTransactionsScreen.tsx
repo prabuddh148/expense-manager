@@ -159,6 +159,9 @@ export function SmsTransactionsScreen() {
     setBusyId(transaction.id);
     try {
       await smsApi.remove(transaction.id);
+      // Deleting is a "look at this again" action, unlike ignore. The scan has to be
+      // allowed back over the message for that to hold.
+      await scanner.resetWatermark();
       setDeleting(null);
       // A bank with nothing left disappears from the filters, so do not stay on it.
       const remaining = (data ?? []).filter((row) => row.id !== transaction.id);
@@ -477,6 +480,9 @@ export function SmsTransactionsScreen() {
         onConfirm={async () => {
           try {
             const removed = await smsApi.clearPending();
+            // The rows are gone; without this the scan would never re-read those
+            // messages, so "cleared" would quietly mean "gone for good".
+            await scanner.resetWatermark();
             setClearingAll(false);
             setBank(null);
             showToast(`${removed} ${removed === 1 ? 'record' : 'records'} cleared`, 'success');

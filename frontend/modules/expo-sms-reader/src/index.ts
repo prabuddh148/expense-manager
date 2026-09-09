@@ -6,7 +6,7 @@ export type SmsMessage = {
   id: string | null;
   sender: string | null;
   body: string;
-  /** Milliseconds since the epoch. */
+  /** Milliseconds since the epoch. Batches come back oldest first. */
   timestamp: number;
 };
 
@@ -42,6 +42,7 @@ export function hasSmsPermission(): boolean {
   }
 }
 
+/** Messages at or after `sinceMillis`, oldest first, at most `limit` of them. */
 export async function readMessages(sinceMillis: number, limit = 200): Promise<SmsMessage[]> {
   if (!isSmsReaderAvailable()) return [];
   return SmsReaderModule!.readMessages(sinceMillis, limit);

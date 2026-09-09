@@ -31,3 +31,6 @@ Thumbs.db
 # Expo prebuild output - regenerated from app.json and the config plugins
 frontend/android/
 frontend/ios/
+
+# Gradle caches inside the local native modules
+**/.gradle/

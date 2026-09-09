@@ -38,8 +38,9 @@ class SmsReaderModule : Module() {
         }
 
         /**
-         * Messages received since a timestamp, newest first. Used for the initial pass
-         * over existing messages and whenever the user asks for a rescan.
+         * Messages received since a timestamp, oldest first, capped at `limit`. Oldest
+         * first lets the caller drain a backlog by page, moving its watermark to the last
+         * message it handled; newest first would leave it no way to reach what came before.
          */
         AsyncFunction("readMessages") { sinceMillis: Double, limit: Int ->
             requirePermission()
@@ -86,7 +87,7 @@ class SmsReaderModule : Module() {
             projection,
             "${Telephony.Sms.DATE} >= ?",
             arrayOf(sinceMillis.toString()),
-            "${Telephony.Sms.DATE} DESC LIMIT $limit"
+            "${Telephony.Sms.DATE} ASC LIMIT $limit"
         )?.use { cursor ->
             val address = cursor.getColumnIndex(Telephony.Sms.ADDRESS)
             val body = cursor.getColumnIndex(Telephony.Sms.BODY)

@@ -9,6 +9,7 @@ import {
   BottomSheet,
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
   ErrorState,
   Screen,
@@ -47,6 +48,8 @@ export function SmsTransactionsScreen() {
   const [bank, setBank] = useState<string | null>(null);
   const [status, setStatus] = useState<SmsTransactionStatus | 'ALL'>('UNCATEGORIZED');
   const [picking, setPicking] = useState<SmsTransaction | null>(null);
+  const [deleting, setDeleting] = useState<SmsTransaction | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const listFetcher = useCallback(
@@ -75,6 +78,27 @@ export function SmsTransactionsScreen() {
     void refresh();
     void refreshBanks();
   }, [refresh, refreshBanks]);
+
+  // Counts come from the bank summaries, which cover every transaction regardless of
+  // the filter currently applied - counting the visible list would always agree with
+  // itself and tell us nothing about the other tabs.
+  const statusCounts: Partial<Record<SmsTransactionStatus | 'ALL', number>> = {
+    UNCATEGORIZED: (banks ?? []).reduce((sum, entry) => sum + entry.uncategorized, 0),
+    CATEGORIZED: (banks ?? []).reduce((sum, entry) => sum + entry.categorized, 0),
+    ADDED_TO_EXPENSE: (banks ?? []).reduce((sum, entry) => sum + entry.addedToExpense, 0),
+    ALL: (banks ?? []).reduce((sum, entry) => sum + entry.total, 0),
+  };
+
+  // Scan as soon as the screen can. Without this the list only ever showed what a
+  // previous session had imported, and the feature looked broken until the refresh
+  // button was found - the watermark means this reads only what arrived since last time.
+  const scanOnOpen = scanner.scan;
+  useEffect(() => {
+    if (scanner.permission !== 'granted') return;
+    void scanOnOpen().then((result) => {
+      if (result && result.imported > 0) reloadAll();
+    });
+  }, [reloadAll, scanOnOpen, scanner.permission]);
 
   // Watch for new messages while the screen is open, so a transaction that arrives now
   // shows up without the user doing anything.
@@ -125,6 +149,25 @@ export function SmsTransactionsScreen() {
       reloadAll();
     } catch (caught) {
       // Left in the list on failure, so nothing is lost.
+      showToast(toAppError(caught).message, 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const removeOne = async (transaction: SmsTransaction) => {
+    setBusyId(transaction.id);
+    try {
+      await smsApi.remove(transaction.id);
+      setDeleting(null);
+      // A bank with nothing left disappears from the filters, so do not stay on it.
+      const remaining = (data ?? []).filter((row) => row.id !== transaction.id);
+      if (bank && !remaining.some((row) => row.bankName === bank)) {
+        setBank(null);
+      }
+      showToast('Record deleted', 'success');
+      reloadAll();
+    } catch (caught) {
       showToast(toAppError(caught).message, 'error');
     } finally {
       setBusyId(null);
@@ -217,6 +260,21 @@ export function SmsTransactionsScreen() {
                 </>
               ) : null}
             </View>
+          )}
+
+          {/* Deleting is allowed on anything that has not become an expense; one that
+              has keeps its record so the expense can still be traced back. */}
+          {added ? null : (
+            <Pressable
+              onPress={() => setDeleting(item)}
+              hitSlop={8}
+              style={[styles.deleteRow, { marginTop: spacing.md }]}
+            >
+              <Ionicons name="trash-outline" size={14} color={colors.textMuted} />
+              <Text style={[typography.caption, { color: colors.textMuted, marginLeft: 6 }]}>
+                Delete this record
+              </Text>
+            </Pressable>
           )}
         </Card>
       );
@@ -332,11 +390,21 @@ export function SmsTransactionsScreen() {
                 ]}
               >
                 <Ionicons
-                  name={scanner.scanning ? 'hourglass-outline' : 'refresh-outline'}
+                  name={scanner.scanning ? "hourglass-outline" : "refresh-outline"}
                   size={18}
                   color={colors.text}
                 />
               </Pressable>
+              {(banks ?? []).length > 0 ? (
+                <Pressable
+                  onPress={() => setClearingAll(true)}
+                  hitSlop={10}
+                  accessibilityLabel="Clear all detected transactions"
+                  style={[styles.scanButton, { backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, marginLeft: 8 }]}
+                >
+                  <Ionicons name="trash-outline" size={17} color={colors.textMuted} />
+                </Pressable>
+              ) : null}
             </View>
 
             {/* Banks come from what has been detected, so this row grows by itself. */}
@@ -358,11 +426,16 @@ export function SmsTransactionsScreen() {
               ))}
             </ScrollView>
 
+            {/* A status with nothing behind it is a dead end, so it is not offered.
+                The one in use always stays, or the row would jump as it emptied. */}
             <View style={[styles.chipRow, { marginTop: spacing.md, flexWrap: 'wrap' }]}>
-              {STATUS_FILTERS.map((option) => (
+              {STATUS_FILTERS.filter(
+                (option) => option.key === status || (statusCounts[option.key] ?? 0) > 0,
+              ).map((option) => (
                 <FilterChip
                   key={option.key}
                   label={option.label}
+                  badge={option.key === 'ALL' ? undefined : statusCounts[option.key]}
                   active={status === option.key}
                   onPress={() => setStatus(option.key)}
                 />
@@ -381,6 +454,37 @@ export function SmsTransactionsScreen() {
             }
           />
         }
+      />
+
+      <ConfirmDialog
+        visible={deleting !== null}
+        title="Delete this record?"
+        message="It is removed from this list only - your expenses and salary are untouched. A later scan can pick the message up again."
+        confirmLabel="Delete"
+        destructive
+        loading={busyId === deleting?.id}
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => deleting && removeOne(deleting)}
+      />
+
+      <ConfirmDialog
+        visible={clearingAll}
+        title="Clear all detected transactions?"
+        message="Everything not already added to your expenses is removed. Expenses you created from these stay exactly as they are."
+        confirmLabel="Clear all"
+        destructive
+        onCancel={() => setClearingAll(false)}
+        onConfirm={async () => {
+          try {
+            const removed = await smsApi.clearPending();
+            setClearingAll(false);
+            setBank(null);
+            showToast(`${removed} ${removed === 1 ? 'record' : 'records'} cleared`, 'success');
+            reloadAll();
+          } catch (caught) {
+            showToast(toAppError(caught).message, 'error');
+          }
+        }}
       />
 
       <BottomSheet
@@ -472,5 +576,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row' },
   addedRow: { flexDirection: 'row', alignItems: 'center' },
   categoryRow: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth },
+  deleteRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' },
   dot: { width: 12, height: 12, borderRadius: 6 },
 });

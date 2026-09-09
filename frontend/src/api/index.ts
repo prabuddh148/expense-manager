@@ -11,3 +11,4 @@ export * from './services/analyticsApi';
 export * from './services/plannerApi';
 export * from './services/moneyTrackerApi';
 export * from './services/smsApi';
+export * from './services/savingsApi';

@@ -90,9 +90,9 @@ public class SmsTransactionService {
                     return new SmsBankSummary(
                             bank,
                             forBank.size(),
-                            forBank.stream()
-                                    .filter(row -> row.getStatus() == SmsTransactionStatus.UNCATEGORIZED)
-                                    .count(),
+                            count(forBank, SmsTransactionStatus.UNCATEGORIZED),
+                            count(forBank, SmsTransactionStatus.CATEGORIZED),
+                            count(forBank, SmsTransactionStatus.ADDED_TO_EXPENSE),
                             sum(forBank, SmsTransactionType.DEBIT),
                             sum(forBank, SmsTransactionType.CREDIT));
                 })
@@ -193,6 +193,39 @@ public class SmsTransactionService {
         return mapper.toResponse(smsTransactionRepository.save(transaction));
     }
 
+    /**
+     * Removes the record entirely, hash and all.
+     *
+     * Distinct from ignore(): that keeps the row so the message is never detected again,
+     * while this genuinely forgets it - so a later rescan will find the message afresh.
+     * That is the behaviour someone deleting a log expects, and it is also the only way
+     * back if they dismissed something by mistake.
+     *
+     * A transaction already turned into an expense is kept, because deleting it would
+     * strip the expense of the record explaining where it came from.
+     */
+    @Transactional
+    public void delete(Long id) {
+        SmsTransaction transaction = require(id);
+        if (transaction.getStatus() == SmsTransactionStatus.ADDED_TO_EXPENSE) {
+            throw new BadRequestException(
+                    "This is linked to an expense. Delete the expense itself if you no longer want it.");
+        }
+        smsTransactionRepository.delete(transaction);
+    }
+
+    /** Clears every detection that has not become an expense. */
+    @Transactional
+    public int deleteAllPending() {
+        List<SmsTransaction> removable = smsTransactionRepository
+                .findByUserIdOrderByTransactionDateDescIdDesc(currentUser.id())
+                .stream()
+                .filter(row -> row.getStatus() != SmsTransactionStatus.ADDED_TO_EXPENSE)
+                .toList();
+        smsTransactionRepository.deleteAll(removable);
+        return removable.size();
+    }
+
     private SmsTransaction require(Long id) {
         return smsTransactionRepository.findByIdAndUserId(id, currentUser.id())
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction " + id + " not found"));
@@ -213,6 +246,10 @@ public class SmsTransactionService {
         return "sms:" + transaction.getId() + ":" + transaction.getBankName();
     }
 
+    private static long count(List<SmsTransaction> rows, SmsTransactionStatus status) {
+        return rows.stream().filter(row -> row.getStatus() == status).count();
+    }
+
     private static BigDecimal sum(List<SmsTransaction> rows, SmsTransactionType type) {
         return Money.scale(rows.stream()
                 .filter(row -> row.getTransactionType() == type)
@@ -220,11 +257,4 @@ public class SmsTransactionService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 
-    private static String trimToNull(String value) {
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
-    }
 }

@@ -7,6 +7,8 @@ public record SmsBankSummary(
         String bank,
         long total,
         long uncategorized,
+        long categorized,
+        long addedToExpense,
         BigDecimal debitTotal,
         BigDecimal creditTotal
 ) {}

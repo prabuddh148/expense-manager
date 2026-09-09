@@ -29,4 +29,5 @@ export type AppStackParamList = {
   SalaryPlannerPreview: { plannerId: number };
   Settings: undefined;
   MoneyTrackerForm: { transactionId?: number } | undefined;
+  Savings: undefined;
 };

@@ -46,6 +46,12 @@ export function ProfileScreen() {
       onPress: () => navigation.navigate('Categories'),
     },
     {
+      icon: 'wallet-outline',
+      label: 'Savings',
+      hint: 'What you have put aside, and how',
+      onPress: () => navigation.navigate('Savings'),
+    },
+    {
       icon: 'pie-chart-outline',
       label: 'Salary Planner',
       hint: 'Split a salary and export it',

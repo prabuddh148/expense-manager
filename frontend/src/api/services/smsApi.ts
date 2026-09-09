@@ -42,5 +42,13 @@ export const smsApi = {
     apiClient.post<SmsTransaction>(`/sms-transactions/${id}/add-to-expense`).then((r) => r.data),
 
   ignore: (id: number) =>
-    apiClient.post<SmsTransaction>(`/sms-transactions/${id}/ignore`).then((r) => r.data),
+    apiClient.post<SmsTransaction>(`/sms-transactions//ignore`).then((r) => r.data),
+
+  /** Forgets the record entirely, so a later rescan can pick the message up again. */
+  remove: (id: number) =>
+    apiClient.delete(`/sms-transactions/`).then(() => undefined),
+
+  /** Clears every detection that has not become an expense. */
+  clearPending: () =>
+    apiClient.delete<{ deleted: number }>('/sms-transactions').then((r) => r.data.deleted),
 };

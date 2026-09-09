@@ -374,6 +374,8 @@ export type SmsBankSummary = {
   bank: string;
   total: number;
   uncategorized: number;
+  categorized: number;
+  addedToExpense: number;
   debitTotal: number;
   creditTotal: number;
 };
@@ -382,4 +384,57 @@ export type SmsImportResult = {
   imported: number;
   skipped: number;
   transactions: SmsTransaction[];
+};
+
+/* ------------------------------------------------------------------ *
+ * Savings
+ *
+ * A log of money set aside, not a balance. It stays out of the salary
+ * arithmetic: the money usually already left as an expense, and counting
+ * it again would deduct it twice.
+ * ------------------------------------------------------------------ */
+
+export type SavingsMethod =
+  | 'CASH'
+  | 'BANK_ACCOUNT'
+  | 'FIXED_DEPOSIT'
+  | 'RECURRING_DEPOSIT'
+  | 'MUTUAL_FUND'
+  | 'SIP'
+  | 'STOCKS'
+  | 'GOLD'
+  | 'PPF'
+  | 'OTHER';
+
+export type SavingsEntry = {
+  id: number;
+  title: string;
+  amount: number;
+  method: SavingsMethod;
+  /** Readable form of the method, resolved server-side so clients agree. */
+  methodLabel: string;
+  note: string | null;
+  date: string;
+  createdAt: string;
+};
+
+export type SavingsPayload = {
+  title: string;
+  amount: number;
+  method: SavingsMethod;
+  note?: string | null;
+  date?: string | null;
+};
+
+export type SavingsSummary = {
+  total: number;
+  thisMonth: number;
+  entryCount: number;
+  byMethod: {
+    method: SavingsMethod;
+    label: string;
+    amount: number;
+    count: number;
+    percentage: number;
+  }[];
 };

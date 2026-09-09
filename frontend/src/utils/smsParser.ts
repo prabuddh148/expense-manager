@@ -51,8 +51,14 @@ const CREDIT_WORDS = /\b(credited|credit|received|deposited|refund)\b/i;
 const NEGATIVE_WORDS =
   /\b(otp|will be|request|failed|declined|reversed|due|statement|balance is|available balance is|offer|apply now|eligible|reminder)\b/i;
 
+// The comma-grouped branch demands at least one comma. With `*` it also matched the
+// first three digits of a plain number and stopped there, turning INR 1200.00 into 120.
 const AMOUNT_PATTERN =
-  /(?:INR|Rs\.?|₹)\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/i;
+  /(?:INR|Rs\.?|₹)\s*([0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/i;
+
+/** Plenty of banks write "debited by 150.0", with no currency marker at all. */
+const AMOUNT_FALLBACK_PATTERN =
+  /\b(?:debited|credited)\s+(?:by|with|for)\s+([0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/i;
 
 const ACCOUNT_PATTERN =
   /\b(?:a\/c|acct|account|card|ac)\s*(?:no\.?|number)?\s*[:.]?\s*((?:x|\*){2,}\s*[0-9]{3,6}|[0-9]{3,6})\b/i;
@@ -157,12 +163,16 @@ export function parseSms(
   // "Your OTP is", "will be debited", "payment due" - not money that has moved.
   if (NEGATIVE_WORDS.test(body)) return null;
 
-  const isDebit = DEBIT_WORDS.test(body);
-  const isCredit = CREDIT_WORDS.test(body);
+  // "Credit Card" and "Debit Card" name the instrument, not the direction the money
+  // went. Left in, every card spend read as both a debit and a credit and was dropped.
+  const direction = body.replace(/(?:credit|debit)s*cards?/gi, " card ");
+
+  const isDebit = DEBIT_WORDS.test(direction);
+  const isCredit = CREDIT_WORDS.test(direction);
   // Exactly one direction, or we cannot say what happened.
   if (isDebit === isCredit) return null;
 
-  const amountMatch = body.match(AMOUNT_PATTERN);
+  const amountMatch = body.match(AMOUNT_PATTERN) ?? body.match(AMOUNT_FALLBACK_PATTERN);
   if (!amountMatch) return null;
 
   const amount = Number(amountMatch[1].replace(/,/g, ''));

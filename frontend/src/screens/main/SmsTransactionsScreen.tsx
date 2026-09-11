@@ -1,7 +1,17 @@
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  AppState,
+  FlatList,
+  Linking,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { categoryApi, smsApi, toAppError } from '../../api';
@@ -10,18 +20,20 @@ import {
   Button,
   Card,
   ConfirmDialog,
+  DateTimeField,
   EmptyState,
   ErrorState,
   Screen,
   SkeletonList,
 } from '../../components';
 import { useAsyncData } from '../../hooks/useAsyncData';
-import { useSmsScanner } from '../../hooks/useSmsScanner';
+import { ScanOptions, ScanResult, useSmsScanner } from '../../hooks/useSmsScanner';
 import { AppStackParamList } from '../../navigation/types';
+import { useFeatures } from '../../store/FeaturesContext';
 import { useToast } from '../../store/ToastContext';
 import { useTheme } from '../../theme';
 import { Category, SmsTransaction, SmsTransactionStatus } from '../../types/api';
-import { formatDate, formatTime } from '../../utils/date';
+import { formatDate, formatTime, fromIsoDate, toIsoDate, toIsoTime } from '../../utils/date';
 import { formatMoney } from '../../utils/format';
 
 type Nav = NativeStackNavigationProp<AppStackParamList>;
@@ -32,6 +44,51 @@ const STATUS_FILTERS: { key: SmsTransactionStatus | 'ALL'; label: string }[] = [
   { key: 'ADDED_TO_EXPENSE', label: 'Added' },
   { key: 'ALL', label: 'All' },
 ];
+
+/** Inclusive, as yyyy-MM-dd. */
+type DateRange = { from: string; to: string };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** How far the rescan in the scan report reaches when no date filter says otherwise. */
+const RESCAN_DAYS = 30;
+
+function lastDays(days: number): DateRange {
+  return { from: toIsoDate(new Date(Date.now() - (days - 1) * DAY_MS)), to: toIsoDate(new Date()) };
+}
+
+const DATE_PRESETS: { label: string; range: () => DateRange }[] = [
+  { label: 'Today', range: () => lastDays(1) },
+  { label: 'Last 7 days', range: () => lastDays(7) },
+  {
+    label: 'This month',
+    range: () => {
+      const now = new Date();
+      return { from: toIsoDate(new Date(now.getFullYear(), now.getMonth(), 1)), to: toIsoDate(now) };
+    },
+  },
+  {
+    label: 'Last month',
+    range: () => {
+      const now = new Date();
+      return {
+        from: toIsoDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+        // Day 0 of this month is the last day of the one before.
+        to: toIsoDate(new Date(now.getFullYear(), now.getMonth(), 0)),
+      };
+    },
+  },
+];
+
+function rangeLabel(range: DateRange): string {
+  return range.from === range.to
+    ? formatDate(range.from)
+    : `${formatDate(range.from)} – ${formatDate(range.to)}`;
+}
+
+function formatMoment(millis: number): string {
+  const date = new Date(millis);
+  return `${formatDate(toIsoDate(date))}, ${formatTime(toIsoTime(date))}`;
+}
 
 /**
  * Bank transactions recognised on the device.
@@ -44,32 +101,53 @@ export function SmsTransactionsScreen() {
   const { colors, radius, spacing, typography } = useTheme();
   const { showToast } = useToast();
   const scanner = useSmsScanner();
+  const { isEnabled } = useFeatures();
+  // With Expenses switched off there is nowhere for a row to go; it can still be filed.
+  const canAddToExpense = isEnabled('expenses');
 
   const [bank, setBank] = useState<string | null>(null);
   const [status, setStatus] = useState<SmsTransactionStatus | 'ALL'>('UNCATEGORIZED');
+  const [range, setRange] = useState<DateRange | null>(null);
+  const [draftRange, setDraftRange] = useState<DateRange>(() => lastDays(7));
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [picking, setPicking] = useState<SmsTransaction | null>(null);
   const [deleting, setDeleting] = useState<SmsTransaction | null>(null);
   const [clearingAll, setClearingAll] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  const from = range?.from;
+  const to = range?.to;
 
   const listFetcher = useCallback(
     () =>
       smsApi.list({
         bank: bank ?? undefined,
         status: status === 'ALL' ? undefined : status,
+        from,
+        to,
       }),
-    [bank, status],
+    [bank, status, from, to],
   );
   const { data, loading, refreshing, error, refresh, reload } = useAsyncData(
     listFetcher,
-    [bank, status],
+    [bank, status, from, to],
     { cacheKey: 'sms-transactions' },
   );
 
-  const banksFetcher = useCallback(() => smsApi.banks(), []);
-  const { data: banks, refresh: refreshBanks } = useAsyncData(banksFetcher, [], {
+  // Counted within the same dates as the list, so each chip's number is what it shows.
+  const banksFetcher = useCallback(() => smsApi.banks({ from, to }), [from, to]);
+  const { data: banks, refresh: refreshBanks } = useAsyncData(banksFetcher, [from, to], {
     cacheKey: 'sms-banks',
   });
+
+  // A bank with nothing left in view - deleted down to zero, or outside the new dates -
+  // drops out of the chip row, so do not stay filtered on it.
+  useEffect(() => {
+    if (bank && banks && !banks.some((entry) => entry.bank === bank)) {
+      setBank(null);
+    }
+  }, [bank, banks]);
 
   const categoriesFetcher = useCallback(() => categoryApi.list(), []);
   const { data: categories } = useAsyncData(categoriesFetcher, []);
@@ -89,32 +167,48 @@ export function SmsTransactionsScreen() {
     ALL: (banks ?? []).reduce((sum, entry) => sum + entry.total, 0),
   };
 
-  // Scan as soon as the screen can. Without this the list only ever showed what a
-  // previous session had imported, and the feature looked broken until the refresh
-  // button was found - the watermark means this reads only what arrived since last time.
-  const scanOnOpen = scanner.scan;
-  useEffect(() => {
-    if (scanner.permission !== 'granted') return;
-    void scanOnOpen().then((result) => {
+  const { permission, scan, subscribe, handleIncoming } = scanner;
+
+  const quietScan = useCallback(() => {
+    void scan().then((result) => {
       if (result && result.imported > 0) reloadAll();
     });
-  }, [reloadAll, scanOnOpen, scanner.permission]);
+  }, [reloadAll, scan]);
+
+  // Scan whenever the screen comes into view, not only when it first mounts. The tab
+  // stays mounted for as long as the app lives, so a scan on mount alone never ran
+  // again when the app was reopened from recents days later - the list just kept
+  // showing whatever the last cold start had found. The watermark keeps each one cheap.
+  useFocusEffect(
+    useCallback(() => {
+      if (permission === 'granted') quietScan();
+    }, [permission, quietScan]),
+  );
+
+  // And whenever the app itself comes back to the foreground, for the same reason.
+  useEffect(() => {
+    if (permission !== 'granted') return undefined;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') quietScan();
+    });
+    return () => subscription.remove();
+  }, [permission, quietScan]);
 
   // Watch for new messages while the screen is open, so a transaction that arrives now
-  // shows up without the user doing anything.
+  // shows up without the user doing anything. Depends on the stable pieces only: the
+  // scanner object itself is new every render, and depending on it re-registered the
+  // receiver each time, leaving gaps where a message could arrive unheard.
   useEffect(() => {
-    if (scanner.permission !== 'granted') return undefined;
+    if (permission !== 'granted') return undefined;
 
-    const unsubscribe = scanner.subscribe((message) => {
-      void scanner
-        .handleIncoming(message.body, message.sender, message.timestamp)
-        .then(() => reloadAll());
+    const unsubscribe = subscribe((message) => {
+      void handleIncoming(message.body, message.sender, message.timestamp).then(() => reloadAll());
     });
     return unsubscribe;
-  }, [reloadAll, scanner]);
+  }, [handleIncoming, permission, reloadAll, subscribe]);
 
-  const runScan = async () => {
-    const result = await scanner.scan();
+  const runScan = async (options?: ScanOptions) => {
+    const result = await scan(options);
     if (!result) return;
     if (result.error) {
       showToast(result.error, 'error');
@@ -122,12 +216,29 @@ export function SmsTransactionsScreen() {
       showToast(
         result.imported > 0
           ? `${result.imported} new ${result.imported === 1 ? 'transaction' : 'transactions'} found`
-          : 'No new transactions found',
+          : `No new transactions in ${result.read} ${result.read === 1 ? 'message' : 'messages'} read`,
         'success',
       );
     }
     reloadAll();
   };
+
+  const rescanFrom = range ? fromIsoDate(range.from).getTime() : Date.now() - RESCAN_DAYS * DAY_MS;
+  const rescanLabel = range
+    ? `Rescan messages since ${formatDate(range.from)}`
+    : `Rescan the last ${RESCAN_DAYS} days`;
+
+  const openRangeSheet = () => {
+    setDraftRange(range ?? lastDays(7));
+    setRangeOpen(true);
+  };
+
+  const applyRange = (next: DateRange | null) => {
+    setRange(next);
+    setRangeOpen(false);
+  };
+
+  const draftInvalid = draftRange.from > draftRange.to;
 
   const chooseCategory = async (transaction: SmsTransaction, category: Category) => {
     setBusyId(transaction.id);
@@ -164,11 +275,6 @@ export function SmsTransactionsScreen() {
       // allowed back over the message for that to hold.
       await scanner.resetWatermark();
       setDeleting(null);
-      // A bank with nothing left disappears from the filters, so do not stay on it.
-      const remaining = (data ?? []).filter((row) => row.id !== transaction.id);
-      if (bank && !remaining.some((row) => row.bankName === bank)) {
-        setBank(null);
-      }
       showToast('Record deleted', 'success');
       reloadAll();
     } catch (caught) {
@@ -251,7 +357,7 @@ export function SmsTransactionsScreen() {
                 style={styles.flex}
                 onPress={() => setPicking(item)}
               />
-              {isDebit ? (
+              {isDebit && canAddToExpense ? (
                 <>
                   <View style={{ width: spacing.sm }} />
                   <Button
@@ -283,7 +389,7 @@ export function SmsTransactionsScreen() {
         </Card>
       );
     },
-    [busyId, colors, radius, spacing, typography],
+    [busyId, canAddToExpense, colors, radius, spacing, typography],
   );
 
   // The module is missing entirely in Expo Go and on iOS - say so rather than failing.
@@ -385,7 +491,7 @@ export function SmsTransactionsScreen() {
                 </Text>
               </View>
               <Pressable
-                onPress={runScan}
+                onPress={() => runScan()}
                 hitSlop={10}
                 accessibilityLabel="Scan for new messages"
                 style={[
@@ -426,11 +532,84 @@ export function SmsTransactionsScreen() {
               </Text>
             ) : null}
 
+            {/* What the last scan actually saw. Without it "nothing new", "nothing read"
+                and "read but not understood" all looked the same from here. */}
+            {scanner.lastResult ? (
+              <Pressable
+                onPress={() => setReportOpen(true)}
+                hitSlop={6}
+                style={[styles.reportRow, { marginTop: spacing.md }]}
+              >
+                <Ionicons name="pulse-outline" size={14} color={colors.textMuted} />
+                <Text
+                  style={[typography.caption, styles.flex, { color: colors.textMuted, marginLeft: 6 }]}
+                  numberOfLines={2}
+                >
+                  Last scan read {scanner.lastResult.read}{' '}
+                  {scanner.lastResult.read === 1 ? 'message' : 'messages'}
+                  {scanner.lastResult.newest
+                    ? ` up to ${formatMoment(scanner.lastResult.newest)}`
+                    : ''}
+                  {scanner.lastResult.unrecognised.length > 0
+                    ? ` · ${scanner.lastResult.unrecognised.length} not understood`
+                    : ''}
+                </Text>
+                <Text style={[typography.caption, { color: colors.primary, marginLeft: spacing.sm }]}>
+                  Details
+                </Text>
+              </Pressable>
+            ) : null}
+
+            <View style={[styles.row, { marginTop: spacing.lg }]}>
+              <Pressable
+                onPress={openRangeSheet}
+                accessibilityLabel="Filter by date"
+                style={[
+                  styles.chip,
+                  styles.row,
+                  {
+                    backgroundColor: range ? colors.primary : colors.surface,
+                    borderColor: range ? colors.primary : colors.border,
+                    borderRadius: radius.pill,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={14}
+                  color={range ? colors.textInverse : colors.textMuted}
+                />
+                <Text
+                  style={[
+                    typography.caption,
+                    { color: range ? colors.textInverse : colors.textMuted, marginHorizontal: 6 },
+                  ]}
+                >
+                  {range ? rangeLabel(range) : 'All dates'}
+                </Text>
+                <Ionicons
+                  name="chevron-down"
+                  size={12}
+                  color={range ? colors.textInverse : colors.textMuted}
+                />
+              </Pressable>
+              {range ? (
+                <Pressable
+                  onPress={() => setRange(null)}
+                  hitSlop={10}
+                  accessibilityLabel="Show all dates"
+                  style={{ marginLeft: spacing.md }}
+                >
+                  <Text style={[typography.caption, { color: colors.primary }]}>Clear</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
             {/* Banks come from what has been detected, so this row grows by itself. */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={{ marginTop: spacing.lg }}
+              style={{ marginTop: spacing.md }}
               contentContainerStyle={styles.chipRow}
             >
               <FilterChip label="All" active={bank === null} onPress={() => setBank(null)} />
@@ -463,17 +642,88 @@ export function SmsTransactionsScreen() {
           </View>
         }
         ListEmptyComponent={
-          <EmptyState
-            icon="chatbubbles-outline"
-            title="Nothing here"
-            message={
-              status === 'UNCATEGORIZED'
-                ? 'No transactions waiting to be categorised. Pull down or tap refresh to scan for new messages.'
-                : 'No transactions match this filter.'
-            }
-          />
+          range ? (
+            // Dates older than any scan so far have never been read at all, so offer
+            // to read them rather than implying there was nothing.
+            <EmptyState
+              icon="calendar-outline"
+              title="Nothing in these dates"
+              message={`No transactions match between ${rangeLabel(range)}. If you expected some, scan the messages on this phone from ${formatDate(range.from)}.`}
+              actionLabel={scanner.scanning ? 'Scanning…' : 'Scan these dates'}
+              onAction={() => runScan({ fromMillis: rescanFrom })}
+            />
+          ) : (
+            <EmptyState
+              icon="chatbubbles-outline"
+              title="Nothing here"
+              message={
+                status === 'UNCATEGORIZED'
+                  ? 'No transactions waiting to be categorised. Pull down or tap refresh to scan for new messages.'
+                  : 'No transactions match this filter.'
+              }
+            />
+          )
         }
       />
+
+      <BottomSheet visible={rangeOpen} onClose={() => setRangeOpen(false)} title="Filter by date">
+        <View style={[styles.chipRow, { flexWrap: 'wrap', marginBottom: spacing.lg }]}>
+          {DATE_PRESETS.map((preset) => {
+            const presetRange = preset.range();
+            return (
+              <FilterChip
+                key={preset.label}
+                label={preset.label}
+                active={
+                  range !== null && range.from === presetRange.from && range.to === presetRange.to
+                }
+                onPress={() => applyRange(presetRange)}
+              />
+            );
+          })}
+        </View>
+
+        <DateTimeField
+          label="From"
+          mode="date"
+          value={draftRange.from}
+          maximumDate={new Date()}
+          onChange={(value) => setDraftRange((current) => ({ ...current, from: value }))}
+        />
+        <DateTimeField
+          label="To"
+          mode="date"
+          value={draftRange.to}
+          maximumDate={new Date()}
+          onChange={(value) => setDraftRange((current) => ({ ...current, to: value }))}
+        />
+        {draftInvalid ? (
+          <Text style={[typography.caption, { color: colors.danger, marginBottom: spacing.md }]}>
+            The start date has to be on or before the end date.
+          </Text>
+        ) : null}
+
+        <Button label="Apply dates" disabled={draftInvalid} onPress={() => applyRange(draftRange)} />
+        {range ? (
+          <Button
+            label="Show all dates"
+            variant="ghost"
+            style={{ marginTop: spacing.sm }}
+            onPress={() => applyRange(null)}
+          />
+        ) : null}
+      </BottomSheet>
+
+      <BottomSheet visible={reportOpen} onClose={() => setReportOpen(false)} title="Last scan">
+        {scanner.lastResult ? (
+          <ScanReportView
+            report={scanner.lastResult}
+            rescanLabel={rescanLabel}
+            scanning={scanner.scanning}
+            onRescan={() => runScan({ fromMillis: rescanFrom })}
+          />
+        ) : null}
+      </BottomSheet>
 
       <ConfirmDialog
         visible={deleting !== null}
@@ -587,8 +837,119 @@ function FilterChip({
   );
 }
 
+/**
+ * The last scan, laid out so a missing transaction can be traced: was the message read
+ * at all, was it understood, did the server take it. Message text is shown from memory
+ * on this phone only - it is never uploaded.
+ */
+function ScanReportView({
+  report,
+  rescanLabel,
+  scanning,
+  onRescan,
+}: {
+  report: ScanResult;
+  rescanLabel: string;
+  scanning: boolean;
+  onRescan: () => void;
+}) {
+  const { colors, radius, spacing, typography } = useTheme();
+
+  const rows: [string, string][] = [
+    ['Finished', formatMoment(report.finishedAt)],
+    ['Messages read', String(report.read)],
+    ...(report.oldest && report.newest
+      ? ([['Covering', `${formatMoment(report.oldest)} to ${formatMoment(report.newest)}`]] as [
+          string,
+          string,
+        ][])
+      : []),
+    ['Recognised as transactions', String(report.recognised)],
+    ['New', String(report.imported)],
+    ['Already imported', String(report.skipped)],
+    ['Refused by the server', String(report.rejected)],
+  ];
+
+  return (
+    <View>
+      {report.error ? (
+        <Text style={[typography.caption, { color: colors.danger, marginBottom: spacing.md }]}>
+          This scan failed: {report.error}
+        </Text>
+      ) : null}
+
+      {rows.map(([label, value]) => (
+        <View key={label} style={[styles.reportLine, { paddingVertical: spacing.xs }]}>
+          <Text style={[typography.caption, { color: colors.textMuted }]}>{label}</Text>
+          <Text
+            style={[typography.caption, styles.reportValue, { color: colors.text, marginLeft: spacing.md }]}
+          >
+            {value}
+          </Text>
+        </View>
+      ))}
+
+      {report.read === 0 ? (
+        <Text style={[typography.caption, { color: colors.warning, marginTop: spacing.md }]}>
+          No messages arrived since the previous scan. If you know some did, rescan below.
+        </Text>
+      ) : null}
+
+      <Button
+        label={scanning ? 'Scanning…' : rescanLabel}
+        variant="secondary"
+        loading={scanning}
+        style={{ marginTop: spacing.lg }}
+        onPress={onRescan}
+      />
+
+      <Text style={[typography.label, { color: colors.textMuted, marginTop: spacing.xl }]}>
+        NOT UNDERSTOOD
+      </Text>
+      <Text style={[typography.caption, { color: colors.textMuted, marginTop: spacing.xs }]}>
+        Bank messages that mention money but were not imported, newest first. If a real
+        payment is here, a screenshot of it is what is needed to support its format.
+      </Text>
+
+      {report.unrecognised.length === 0 ? (
+        <Text style={[typography.body, { color: colors.textMuted, marginTop: spacing.md }]}>
+          None in this scan.
+        </Text>
+      ) : (
+        report.unrecognised.map((message, index) => (
+          <View
+            key={`${message.timestamp}-${index}`}
+            style={{
+              marginTop: spacing.md,
+              padding: spacing.md,
+              borderRadius: radius.md,
+              backgroundColor: colors.surfaceAlt,
+            }}
+          >
+            <Text style={[typography.caption, { color: colors.text }]}>
+              {message.sender ?? 'Unknown sender'} · {formatMoment(message.timestamp)}
+            </Text>
+            <Text style={[typography.caption, { color: colors.warning, marginTop: 2 }]}>
+              {message.reason}
+            </Text>
+            <Text
+              selectable
+              style={[typography.caption, { color: colors.textMuted, marginTop: spacing.xs }]}
+            >
+              {message.body}
+            </Text>
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  reportRow: { flexDirection: 'row', alignItems: 'center' },
+  reportLine: { flexDirection: 'row', justifyContent: 'space-between' },
+  reportValue: { flexShrink: 1, textAlign: 'right' },
   row: { flexDirection: 'row', alignItems: 'center' },
   alignRight: { alignItems: 'flex-end' },
   bubble: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

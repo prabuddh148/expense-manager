@@ -38,9 +38,22 @@ export async function hydrateTokensFromStorage() {
   return stored;
 }
 
+/**
+ * Sections switched off in Settings. Sent with every request so the server leaves their
+ * figures out of each total it computes, not just out of the tab bar.
+ */
+let hiddenFeatures: readonly string[] = [];
+
+export function setHiddenFeatures(features: readonly string[]) {
+  hiddenFeatures = features;
+}
+
 apiClient.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.set('Authorization', `Bearer ${accessToken}`);
+  }
+  if (hiddenFeatures.length > 0) {
+    config.headers.set('X-Hidden-Features', hiddenFeatures.join(','));
   }
   return config;
 });

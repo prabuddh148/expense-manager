@@ -20,6 +20,7 @@ import {
 } from '../../components';
 import { isGoogleConfigured } from '../../constants/config';
 import { clearDataCache } from '../../hooks/useAsyncData';
+import { FEATURES, useFeatures } from '../../store/FeaturesContext';
 import { useNetwork } from '../../store/NetworkContext';
 import { useToast } from '../../store/ToastContext';
 import { ThemeMode, useTheme } from '../../theme';
@@ -34,13 +35,75 @@ export function SettingsScreen() {
   const { colors, radius, spacing, typography, mode, setMode, isDark, toggleTheme } = useTheme();
   const { isOnline } = useNetwork();
   const { showToast } = useToast();
+  const { isEnabled, setEnabled } = useFeatures();
   const [clearing, setClearing] = useState(false);
   const [host, setHost] = useState(getApiBaseUrl());
   const [savingHost, setSavingHost] = useState(false);
 
   return (
     <Screen scroll>
-      <SectionHeader title="Appearance" style={{ marginTop: spacing.md }} />
+      <SectionHeader title="Sections" style={{ marginTop: spacing.md }} />
+      <Card padded={false}>
+        {FEATURES.map((feature, index) => {
+          const enabled = isEnabled(feature.key);
+          return (
+            <View
+              key={feature.key}
+              style={[
+                styles.row,
+                {
+                  padding: spacing.lg,
+                  borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
+                  borderTopColor: colors.border,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.iconBubble,
+                  {
+                    backgroundColor: enabled ? colors.primarySoft : colors.surfaceAlt,
+                    borderRadius: radius.md,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={feature.icon}
+                  size={18}
+                  color={enabled ? colors.primary : colors.textMuted}
+                />
+              </View>
+              <View style={[styles.flex, { marginHorizontal: spacing.md }]}>
+                <Text style={[typography.body, { color: enabled ? colors.text : colors.textMuted }]}>
+                  {feature.label}
+                </Text>
+                <Text style={[typography.caption, { color: colors.textMuted, marginTop: 2 }]}>
+                  {enabled ? 'Shown' : `Hidden. ${feature.hides}`}
+                </Text>
+              </View>
+              <Switch
+                value={enabled}
+                onValueChange={(value) => {
+                  void setEnabled(feature.key, value);
+                  showToast(
+                    value ? `${feature.label} is back` : `${feature.label} hidden`,
+                    'success',
+                  );
+                }}
+                accessibilityLabel={`Show ${feature.label}`}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.surface}
+              />
+            </View>
+          );
+        })}
+      </Card>
+      <Text style={[typography.caption, { color: colors.textMuted, marginTop: spacing.sm }]}>
+        Hiding a section never deletes anything - switch it back on and everything returns as
+        it was. Home and Profile are always shown.
+      </Text>
+
+      <SectionHeader title="Appearance" style={{ marginTop: spacing.xl }} />
 
       <Card>
         <View style={styles.row}>
@@ -229,6 +292,7 @@ function InfoRow({ label, value, first }: { label: string; value: string; first?
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   row: { flexDirection: 'row', alignItems: 'center' },
+  iconBubble: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   modeRow: { flexDirection: 'row', gap: 10 },
   modeTile: { flex: 1, alignItems: 'center', borderWidth: StyleSheet.hairlineWidth },
   infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },

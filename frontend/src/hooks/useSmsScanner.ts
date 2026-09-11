@@ -9,7 +9,7 @@ import {
   readMessages,
   subscribeToSms,
 } from '../../modules/expo-sms-reader/src';
-import { parseMessages, parseSms, type ParsedSms } from '../utils/smsParser';
+import { analyseSms, parseSms, type ParsedSms } from '../utils/smsParser';
 
 /**
  * Versioned because earlier builds stored "now" here after reading only the newest 200
@@ -31,13 +31,46 @@ const READ_PAGE = 5000;
 const UPLOAD_BATCH = 200;
 /** A stop on the drain loop, so a misbehaving watermark cannot spin forever. */
 const MAX_PAGES_PER_SCAN = 20;
+/** How many passed-over bank messages the report keeps, newest first. */
+const MAX_UNRECOGNISED = 40;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** A message from a bank-shaped sender that talked about money but was not imported. */
+export type UnrecognisedSms = {
+  sender: string | null;
+  body: string;
+  timestamp: number;
+  reason: string;
+};
+
+/**
+ * What one scan saw and did. Shown on the screen so that "nothing new" can be told
+ * apart from "nothing read" and from "read, but not understood" - three failures that
+ * otherwise look identical from the outside.
+ */
 export type ScanResult = {
+  finishedAt: number;
+  /** Inbox messages read, and the span of time they covered. */
+  read: number;
+  oldest: number | null;
+  newest: number | null;
+  /** Of those, the ones recognised as transactions. */
+  recognised: number;
   imported: number;
   skipped: number;
   /** Messages the server would not accept, left behind so they cannot block the rest. */
   rejected: number;
+  /** Kept on the device only; never uploaded. */
+  unrecognised: UnrecognisedSms[];
   error: string | null;
+};
+
+export type ScanOptions = {
+  /**
+   * Read from here instead of from the watermark, e.g. to pull in the dates a filter is
+   * showing. The watermark still only ever moves forward.
+   */
+  fromMillis?: number;
 };
 
 /** A 4xx on import is about the data, which retrying cannot fix. Anything else can be. */
@@ -51,7 +84,9 @@ function isRejection(caught: unknown): boolean {
  * time: one row it will not take must not hold every later message hostage, which is
  * exactly what happened when the watermark could only move past a batch that landed.
  */
-async function upload(parsed: ParsedSms[]): Promise<Omit<ScanResult, 'error'>> {
+async function upload(
+  parsed: ParsedSms[],
+): Promise<Pick<ScanResult, 'imported' | 'skipped' | 'rejected'>> {
   const totals = { imported: 0, skipped: 0, rejected: 0 };
   if (parsed.length === 0) return totals;
 
@@ -153,67 +188,106 @@ export function useSmsScanner() {
    * caller can say so - reading the hook's error state straight after awaiting this sees
    * the value from before the scan.
    */
-  const scan = useCallback(async (): Promise<ScanResult | null> => {
-    if (!available || !hasSmsPermission() || scanningRef.current) {
-      return null;
-    }
-
-    scanningRef.current = true;
-    setScanning(true);
-    setError(null);
-
-    const totals = { imported: 0, skipped: 0, rejected: 0 };
-
-    try {
-      AsyncStorage.multiRemove(LEGACY_WATERMARK_KEYS).catch(() => {});
-      const storedSince = await AsyncStorage.getItem(WATERMARK_KEY).catch(() => null);
-      const stored = storedSince === null ? NaN : Number(storedSince);
-      // A watermark in the future would hide every message until that moment arrived.
-      let since = Number.isFinite(stored) && stored <= Date.now()
-        ? stored
-        : Date.now() - FIRST_SCAN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-
-      for (let page = 0; page < MAX_PAGES_PER_SCAN; page += 1) {
-        const batch = await readMessages(since, READ_PAGE);
-        if (batch.length === 0) break;
-
-        // Sorted here rather than trusted: which order the native side returns depends
-        // on the build installed, and the watermark may only ever walk forward.
-        const messages = [...batch].sort((a, b) => a.timestamp - b.timestamp);
-
-        for (let i = 0; i < messages.length; i += UPLOAD_BATCH) {
-          const slice = messages.slice(i, i + UPLOAD_BATCH);
-          const result = await upload(parseMessages(slice));
-          totals.imported += result.imported;
-          totals.skipped += result.skipped;
-          totals.rejected += result.rejected;
-
-          // Only past what the server has now dealt with, and never backwards.
-          const reached = slice[slice.length - 1].timestamp;
-          if (reached > since) {
-            since = reached;
-            await AsyncStorage.setItem(WATERMARK_KEY, String(since)).catch(() => {});
-          }
-        }
-
-        // A short page means the inbox is drained.
-        if (batch.length < READ_PAGE) break;
+  const scan = useCallback(
+    async (options: ScanOptions = {}): Promise<ScanResult | null> => {
+      if (!available || !hasSmsPermission() || scanningRef.current) {
+        return null;
       }
 
-      const summary = { ...totals, error: null };
-      setLastResult(summary);
-      return summary;
-    } catch (caught) {
-      // The watermark stays where the last accepted batch left it, so a failure here
-      // costs a retry rather than the messages.
-      const message = toAppError(caught).message;
-      setError(message);
-      return { ...totals, error: message };
-    } finally {
-      scanningRef.current = false;
-      setScanning(false);
-    }
-  }, [available]);
+      scanningRef.current = true;
+      setScanning(true);
+      setError(null);
+
+      const report: ScanResult = {
+        finishedAt: 0,
+        read: 0,
+        oldest: null,
+        newest: null,
+        recognised: 0,
+        imported: 0,
+        skipped: 0,
+        rejected: 0,
+        unrecognised: [],
+        error: null,
+      };
+
+      try {
+        AsyncStorage.multiRemove(LEGACY_WATERMARK_KEYS).catch(() => {});
+        const storedSince = await AsyncStorage.getItem(WATERMARK_KEY).catch(() => null);
+        const stored = storedSince === null ? NaN : Number(storedSince);
+        // A watermark in the future would hide every message until that moment arrived.
+        const watermark = Number.isFinite(stored) && stored <= Date.now() ? stored : null;
+        let mark = watermark ?? 0;
+        let since =
+          options.fromMillis ?? watermark ?? Date.now() - FIRST_SCAN_WINDOW_DAYS * DAY_MS;
+
+        for (let page = 0; page < MAX_PAGES_PER_SCAN; page += 1) {
+          const batch = await readMessages(since, READ_PAGE);
+          if (batch.length === 0) break;
+
+          // Sorted here rather than trusted: which order the native side returns depends
+          // on the build installed, and the watermark may only ever walk forward.
+          const messages = [...batch].sort((a, b) => a.timestamp - b.timestamp);
+          report.read += messages.length;
+          report.oldest ??= messages[0].timestamp;
+          report.newest = messages[messages.length - 1].timestamp;
+
+          for (let i = 0; i < messages.length; i += UPLOAD_BATCH) {
+            const slice = messages.slice(i, i + UPLOAD_BATCH);
+            const parsed: ParsedSms[] = [];
+            for (const message of slice) {
+              const verdict = analyseSms(message.body, message.sender, message.timestamp);
+              if (verdict.ok) {
+                parsed.push(verdict.parsed);
+              } else if (verdict.suspicious) {
+                report.unrecognised.unshift({
+                  sender: message.sender,
+                  body: message.body,
+                  timestamp: message.timestamp,
+                  reason: verdict.reason,
+                });
+                if (report.unrecognised.length > MAX_UNRECOGNISED) report.unrecognised.pop();
+              }
+            }
+            report.recognised += parsed.length;
+
+            const result = await upload(parsed);
+            report.imported += result.imported;
+            report.skipped += result.skipped;
+            report.rejected += result.rejected;
+
+            // Only past what the server has now dealt with, and never backwards - a
+            // rescan from an earlier date leaves the watermark where it was.
+            const reached = slice[slice.length - 1].timestamp;
+            if (reached > since) since = reached;
+            if (reached > mark) {
+              mark = reached;
+              await AsyncStorage.setItem(WATERMARK_KEY, String(mark)).catch(() => {});
+            }
+          }
+
+          // A short page means the inbox is drained.
+          if (batch.length < READ_PAGE) break;
+        }
+
+        report.finishedAt = Date.now();
+        setLastResult(report);
+        return report;
+      } catch (caught) {
+        // The watermark stays where the last accepted batch left it, so a failure here
+        // costs a retry rather than the messages.
+        report.error = toAppError(caught).message;
+        report.finishedAt = Date.now();
+        setError(report.error);
+        setLastResult(report);
+        return report;
+      } finally {
+        scanningRef.current = false;
+        setScanning(false);
+      }
+    },
+    [available],
+  );
 
   /**
    * Forgets how far the scan has read, so the next one covers the full window again.

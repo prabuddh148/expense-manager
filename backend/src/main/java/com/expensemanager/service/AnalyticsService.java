@@ -3,10 +3,12 @@ package com.expensemanager.service;
 import com.expensemanager.dto.analytics.AnalyticsResponse;
 import com.expensemanager.dto.analytics.CategorySpendResponse;
 import com.expensemanager.dto.analytics.DailySpendResponse;
+import com.expensemanager.entity.RecordSource;
 import com.expensemanager.repository.EmiPaymentRepository;
 import com.expensemanager.repository.ExpenseRepository;
 import com.expensemanager.repository.SalaryRepository;
 import com.expensemanager.security.CurrentUser;
+import com.expensemanager.security.FeatureVisibility;
 import com.expensemanager.util.DateRanges;
 import com.expensemanager.util.Money;
 import org.springframework.stereotype.Service;
@@ -29,15 +31,18 @@ public class AnalyticsService {
     private final EmiPaymentRepository paymentRepository;
     private final SalaryRepository salaryRepository;
     private final CurrentUser currentUser;
+    private final FeatureVisibility visibility;
 
     public AnalyticsService(ExpenseRepository expenseRepository,
                             EmiPaymentRepository paymentRepository,
                             SalaryRepository salaryRepository,
-                            CurrentUser currentUser) {
+                            CurrentUser currentUser,
+                            FeatureVisibility visibility) {
         this.expenseRepository = expenseRepository;
         this.paymentRepository = paymentRepository;
         this.salaryRepository = salaryRepository;
         this.currentUser = currentUser;
+        this.visibility = visibility;
     }
 
     @Transactional(readOnly = true)
@@ -53,13 +58,16 @@ public class AnalyticsService {
     }
 
     AnalyticsResponse build(Long userId, DateRanges.Range range) {
+        List<RecordSource> sources = visibility.expenseSources();
         BigDecimal expenses = Money.scale(
-                expenseRepository.sumForUserBetween(userId, range.from(), range.to()));
-        BigDecimal emiPaid = Money.scale(
-                paymentRepository.sumPaidForUserBetween(userId, range.from(), range.to()));
+                expenseRepository.sumForUserBetween(userId, range.from(), range.to(), sources));
+        BigDecimal emiPaid = visibility.emiVisible()
+                ? Money.scale(paymentRepository.sumPaidForUserBetween(userId, range.from(), range.to()))
+                : Money.ZERO;
         BigDecimal deductions = Money.add(expenses, emiPaid);
         BigDecimal salary = salaryForRange(userId, range);
-        long transactions = expenseRepository.countForUserBetween(userId, range.from(), range.to());
+        long transactions = expenseRepository.countForUserBetween(
+                userId, range.from(), range.to(), sources);
 
         List<DailySpendResponse> daily = dailySeries(userId, range);
         DailySpendResponse highest = daily.stream()
@@ -85,7 +93,8 @@ public class AnalyticsService {
 
     List<CategorySpendResponse> categories(Long userId, DateRanges.Range range) {
         List<ExpenseRepository.CategoryTotal> totals =
-                expenseRepository.sumByCategoryBetween(userId, range.from(), range.to());
+                expenseRepository.sumByCategoryBetween(
+                        userId, range.from(), range.to(), visibility.expenseSources());
         BigDecimal grandTotal = totals.stream()
                 .map(ExpenseRepository.CategoryTotal::getTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -104,7 +113,8 @@ public class AnalyticsService {
     /** Zero-fills days with no spend so the line chart has no gaps. */
     private List<DailySpendResponse> dailySeries(Long userId, DateRanges.Range range) {
         List<ExpenseRepository.DailyTotal> rows =
-                expenseRepository.sumByDayBetween(userId, range.from(), range.to());
+                expenseRepository.sumByDayBetween(
+                        userId, range.from(), range.to(), visibility.expenseSources());
         List<DailySpendResponse> series = new ArrayList<>();
 
         int index = 0;

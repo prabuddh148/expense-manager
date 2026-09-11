@@ -11,8 +11,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useAuth } from '../store/AuthContext';
+import { useFeatures } from '../store/FeaturesContext';
 import { useTheme } from '../theme';
-import { SMS_REMINDER_TYPE, syncPendingReminder } from '../utils/notifications';
+import {
+  cancelPendingReminder,
+  SMS_REMINDER_TYPE,
+  syncPendingReminder,
+} from '../utils/notifications';
 import { AuthStack } from './AuthStack';
 import { AppStack } from './AppStack';
 import { SplashScreen } from '../screens/SplashScreen';
@@ -30,10 +35,16 @@ type RootStackParamList = {
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
-  const { status } = useAuth();
+  const { status: authStatus } = useAuth();
+  const { ready: featuresReady, isEnabled } = useFeatures();
   const { colors, isDark } = useTheme();
   const [splashDone, setSplashDone] = useState(false);
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
+  const smsEnabled = isEnabled('sms');
+
+  // The tabs wait for the hidden sections too: a screen that fetched before they were
+  // read would count figures from sections the user switched off.
+  const status = featuresReady ? authStatus : 'loading';
 
   /**
    * Tapping the daily reminder should land on the transactions it is about, not just
@@ -42,7 +53,7 @@ export function RootNavigator() {
    * tabs before they are mounted would throw.
    */
   useEffect(() => {
-    if (status !== 'authenticated') return undefined;
+    if (status !== 'authenticated' || !smsEnabled) return undefined;
 
     const openSmsTab = (response: Notifications.NotificationResponse) => {
       if (response.notification.request.content.data?.type !== SMS_REMINDER_TYPE) return;
@@ -56,14 +67,18 @@ export function RootNavigator() {
 
     const subscription = Notifications.addNotificationResponseReceivedListener(openSmsTab);
     return () => subscription.remove();
-  }, [navigationRef, status]);
+  }, [navigationRef, smsEnabled, status]);
 
-  // Keep the reminder in step with what is actually outstanding.
+  // Keep the reminder in step with what is actually outstanding - and silent altogether
+  // while SMS is switched off, since it is about a screen that is not there.
   useEffect(() => {
-    if (status === 'authenticated') {
+    if (status !== 'authenticated') return;
+    if (smsEnabled) {
       void syncPendingReminder();
+    } else {
+      void cancelPendingReminder();
     }
-  }, [status]);
+  }, [smsEnabled, status]);
 
   // React Navigation keeps its own theme for card backgrounds and the status bar.
   const navigationTheme = useMemo<Theme>(() => {

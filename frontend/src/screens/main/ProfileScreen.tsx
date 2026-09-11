@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, ConfirmDialog, Screen, SectionHeader } from '../../components';
 import { AppStackParamList } from '../../navigation/types';
 import { useAuth } from '../../store/AuthContext';
+import { FeatureKey, useFeatures } from '../../store/FeaturesContext';
 import { useNetwork } from '../../store/NetworkContext';
 import { useTheme } from '../../theme';
 
@@ -17,6 +18,7 @@ export function ProfileScreen() {
   const { colors, radius, spacing, typography, isDark, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
   const { isOnline } = useNetwork();
+  const { isEnabled } = useFeatures();
   const [signingOut, setSigningOut] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -27,11 +29,12 @@ export function ProfileScreen() {
     .join('')
     .toUpperCase();
 
-  const links: {
+  const allLinks: {
     icon: keyof typeof Ionicons.glyphMap;
     label: string;
     hint: string;
     onPress: () => void;
+    feature?: FeatureKey;
   }[] = [
     {
       icon: 'cash-outline',
@@ -50,20 +53,23 @@ export function ProfileScreen() {
       label: 'Savings',
       hint: 'What you have put aside, and how',
       onPress: () => navigation.navigate('Savings'),
+      feature: 'savings',
     },
     {
       icon: 'pie-chart-outline',
       label: 'Salary Planner',
       hint: 'Split a salary and export it',
       onPress: () => navigation.navigate('SalaryPlanner'),
+      feature: 'planner',
     },
     {
       icon: 'settings-outline',
       label: 'Settings',
-      hint: 'Appearance, data and about',
+      hint: 'Sections, appearance, data and about',
       onPress: () => navigation.navigate('Settings'),
     },
   ];
+  const links = allLinks.filter((link) => !link.feature || isEnabled(link.feature));
 
   return (
     <Screen edges={['bottom']} scroll>

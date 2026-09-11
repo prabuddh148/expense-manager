@@ -8,7 +8,13 @@ import {
   SmsTransactionType,
 } from '../../types/api';
 
-type ListQuery = {
+/** Inclusive transaction dates, yyyy-MM-dd. Either end may be left open. */
+type DateRange = {
+  from?: string;
+  to?: string;
+};
+
+type ListQuery = DateRange & {
   bank?: string;
   status?: SmsTransactionStatus;
   type?: SmsTransactionType;
@@ -18,9 +24,11 @@ export const smsApi = {
   list: (query: ListQuery = {}) =>
     apiClient.get<SmsTransaction[]>('/sms-transactions', { params: query }).then((r) => r.data),
 
-  /** Built from banks actually detected, never a fixed list. */
-  banks: () =>
-    apiClient.get<SmsBankSummary[]>('/sms-transactions/banks').then((r) => r.data),
+  /** Built from banks actually detected, never a fixed list, counted within the range. */
+  banks: (range: DateRange = {}) =>
+    apiClient
+      .get<SmsBankSummary[]>('/sms-transactions/banks', { params: range })
+      .then((r) => r.data),
 
   pendingCount: () =>
     apiClient

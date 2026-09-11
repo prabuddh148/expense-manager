@@ -44,8 +44,8 @@ const SENDER_NAMES: Record<string, string> = {
   PAYTMB: 'Paytm Payments Bank',
 };
 
-/** A message must look like money moving in a direction we understand. */
-const DEBIT_WORDS = /\b(debited|debit|spent|paid|withdrawn|purchase|deducted)\b/i;
+/** A message must look like money moving in a direction we understand. "Sent" is Kotak's. */
+const DEBIT_WORDS = /\b(debited|debit|spent|paid|sent|withdrawn|purchase|deducted)\b/i;
 const CREDIT_WORDS = /\b(credited|credit|received|deposited|refund)\b/i;
 
 /** Anything that means "this is not a transaction that happened". */
@@ -166,65 +166,87 @@ function clean(value: string | undefined | null): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
+export type SmsVerdict =
+  | { ok: true; parsed: ParsedSms }
+  | {
+      ok: false;
+      /** Why it was passed over, in words the scan report can show. */
+      reason: string;
+      /**
+       * From a bank-shaped sender and talking about money - the kind of message a
+       * person would expect to see as a transaction, so worth listing when skipped.
+       */
+      suspicious: boolean;
+    };
+
+function skip(reason: string, suspicious: boolean): SmsVerdict {
+  return { ok: false, reason, suspicious };
+}
+
 /**
- * Returns a transaction, or null when the message is not one we are confident about.
+ * Decides whether a message is a transaction, and says why when it is not.
  *
  * `sender` decides the bank; a message from a person is ignored because it will not
  * match the sender shape.
  */
-export function parseSms(
-  body: string,
-  sender: string | null,
-  receivedAt: number,
-): ParsedSms | null {
-  if (!body) return null;
+export function analyseSms(body: string, sender: string | null, receivedAt: number): SmsVerdict {
+  if (!body) return skip('Empty message', false);
 
   const bank = bankFrom(sender);
-  if (!bank) return null;
+  if (!bank) return skip('Not from a bank or business sender', false);
 
-  // "Your OTP is", "will be debited", "payment due" - not money that has moved.
-  if (NEGATIVE_WORDS.test(body)) return null;
-
+  const amountMatch = body.match(AMOUNT_PATTERN) ?? body.match(AMOUNT_FALLBACK_PATTERN);
   // "Credit Card" and "Debit Card" name the instrument, not the direction the money
   // went. Left in, every card spend read as both a debit and a credit and was dropped.
   const direction = body.replace(/\b(?:credit|debit)\s*cards?\b/gi, ' card ');
+  const debitAt = direction.search(DEBIT_WORDS);
+  const creditAt = direction.search(CREDIT_WORDS);
+  const talksMoney = amountMatch !== null || debitAt >= 0 || creditAt >= 0;
 
-  const isDebit = DEBIT_WORDS.test(direction);
-  const isCredit = CREDIT_WORDS.test(direction);
-  // Exactly one direction, or we cannot say what happened.
-  if (isDebit === isCredit) return null;
+  // "Your OTP is", "will be debited", "payment due" - not money that has moved.
+  const negative = body.match(NEGATIVE_WORDS);
+  if (negative) return skip(`Passed over because it says "${negative[0]}"`, talksMoney);
 
-  const amountMatch = body.match(AMOUNT_PATTERN) ?? body.match(AMOUNT_FALLBACK_PATTERN);
-  if (!amountMatch) return null;
+  if (debitAt < 0 && creditAt < 0) return skip('No debit or credit wording found', talksMoney);
+  // Both words is the normal shape of a transfer - "A/c XX12 debited for Rs 500; ABC
+  // credited" - and the one naming this account comes first. Rejecting these as
+  // ambiguous threw away most UPI payments.
+  const isDebit = creditAt < 0 || (debitAt >= 0 && debitAt < creditAt);
+
+  if (!amountMatch) return skip('No amount found', true);
 
   const amount = Number(amountMatch[1].replace(/,/g, ''));
-  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (!Number.isFinite(amount) || amount <= 0) return skip('The amount reads as zero', true);
 
   const accountMatch = body.match(ACCOUNT_PATTERN);
   const referenceMatch = body.match(REFERENCE_PATTERN);
   const merchantMatch = body.match(MERCHANT_PATTERN);
 
   return {
-    matched: true,
-    bankName: bank,
-    accountIdentifier: accountMatch ? clean(accountMatch[1])?.replace(/\s+/g, '') ?? null : null,
-    amount,
-    transactionType: isDebit ? 'DEBIT' : 'CREDIT',
-    transactionDate: parseDate(body, receivedAt),
-    transactionTime: parseTime(body),
-    merchant: merchantMatch ? clean(merchantMatch[1]) : null,
-    smsReference: referenceMatch ? clean(referenceMatch[1]) : null,
-    // The server hashes from these fields when this is absent. Left to it on purpose:
-    // one implementation of the fingerprint means devices cannot disagree about it.
-    dedupeHash: null,
+    ok: true,
+    parsed: {
+      matched: true,
+      bankName: bank,
+      accountIdentifier: accountMatch ? clean(accountMatch[1])?.replace(/\s+/g, '') ?? null : null,
+      amount,
+      transactionType: isDebit ? 'DEBIT' : 'CREDIT',
+      transactionDate: parseDate(body, receivedAt),
+      transactionTime: parseTime(body),
+      merchant: merchantMatch ? clean(merchantMatch[1]) : null,
+      smsReference: referenceMatch ? clean(referenceMatch[1]) : null,
+      // The server hashes from these fields when this is absent. Left to it on purpose:
+      // one implementation of the fingerprint means devices cannot disagree about it.
+      dedupeHash: null,
+    },
   };
 }
 
-/** Parses a batch, dropping everything that is not a transaction. */
-export function parseMessages(
-  messages: { body: string; sender: string | null; timestamp: number }[],
-): ParsedSms[] {
-  return messages
-    .map((message) => parseSms(message.body, message.sender, message.timestamp))
-    .filter((parsed): parsed is ParsedSms => parsed !== null);
+/** Returns a transaction, or null when the message is not one we are confident about. */
+export function parseSms(
+  body: string,
+  sender: string | null,
+  receivedAt: number,
+): ParsedSms | null {
+  const verdict = analyseSms(body, sender, receivedAt);
+  return verdict.ok ? verdict.parsed : null;
 }

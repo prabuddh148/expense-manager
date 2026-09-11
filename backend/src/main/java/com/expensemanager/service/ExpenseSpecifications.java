@@ -1,6 +1,7 @@
 package com.expensemanager.service;
 
 import com.expensemanager.entity.Expense;
+import com.expensemanager.entity.RecordSource;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
@@ -8,6 +9,7 @@ import org.springframework.data.jpa.domain.Specification;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 
@@ -17,7 +19,9 @@ final class ExpenseSpecifications {
     private ExpenseSpecifications() {
     }
 
+    /** {@code sources} are the origins still shown; an empty collection matches nothing. */
     static Specification<Expense> forUser(Long userId,
+                                          Collection<RecordSource> sources,
                                           String search,
                                           Long categoryId,
                                           boolean otherOnly,
@@ -28,6 +32,14 @@ final class ExpenseSpecifications {
         return (root, query, builder) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(builder.equal(root.get("user").get("id"), userId));
+
+            if (sources.isEmpty()) {
+                predicates.add(builder.disjunction());
+            } else if (sources.size() < RecordSource.values().length) {
+                // A row with no source predates the column and was entered by hand.
+                predicates.add(builder.coalesce(root.<RecordSource>get("source"), RecordSource.MANUAL)
+                        .in(sources));
+            }
 
             if (search != null && !search.isBlank()) {
                 String pattern = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";

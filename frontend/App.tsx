@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { AuthProvider } from './src/store/AuthContext';
+import { FeaturesProvider } from './src/store/FeaturesContext';
 import { NetworkProvider } from './src/store/NetworkContext';
 import { ToastProvider } from './src/store/ToastContext';
 import { ThemeProvider, useTheme } from './src/theme';
@@ -24,12 +25,14 @@ export default function App() {
         <SafeAreaProvider>
           <ThemeProvider>
             <NetworkProvider>
-              <AuthProvider>
-                <ToastProvider>
-                  <ThemedStatusBar />
-                  <RootNavigator />
-                </ToastProvider>
-              </AuthProvider>
+              <FeaturesProvider>
+                <AuthProvider>
+                  <ToastProvider>
+                    <ThemedStatusBar />
+                    <RootNavigator />
+                  </ToastProvider>
+                </AuthProvider>
+              </FeaturesProvider>
             </NetworkProvider>
           </ThemeProvider>
         </SafeAreaProvider>

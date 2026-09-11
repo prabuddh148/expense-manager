@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -61,9 +62,9 @@ public class SmsTransactionService {
 
     @Transactional(readOnly = true)
     public List<SmsTransactionResponse> list(String bank, SmsTransactionStatus status,
-                                             SmsTransactionType type) {
-        return smsTransactionRepository
-                .findByUserIdOrderByTransactionDateDescIdDesc(currentUser.id())
+                                             SmsTransactionType type,
+                                             LocalDate from, LocalDate to) {
+        return rowsBetween(from, to)
                 .stream()
                 .filter(row -> bank == null || bank.equalsIgnoreCase(row.getBankName()))
                 .filter(row -> status == null || row.getStatus() == status)
@@ -72,12 +73,13 @@ public class SmsTransactionService {
                 .toList();
     }
 
-    /** The bank filter row, built from what has actually been detected. */
+    /**
+     * The bank filter row, built from what has actually been detected - within the same
+     * dates as the list, or its counts would describe rows the list is not showing.
+     */
     @Transactional(readOnly = true)
-    public List<SmsBankSummary> banks() {
-        Long userId = currentUser.id();
-        List<SmsTransaction> rows = smsTransactionRepository
-                .findByUserIdOrderByTransactionDateDescIdDesc(userId);
+    public List<SmsBankSummary> banks(LocalDate from, LocalDate to) {
+        List<SmsTransaction> rows = rowsBetween(from, to);
 
         return rows.stream()
                 .map(SmsTransaction::getBankName)
@@ -224,6 +226,19 @@ public class SmsTransactionService {
                 .toList();
         smsTransactionRepository.deleteAll(removable);
         return removable.size();
+    }
+
+    /** Newest first. Both ends are inclusive and either may be open. */
+    private List<SmsTransaction> rowsBetween(LocalDate from, LocalDate to) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BadRequestException("The start date must be on or before the end date");
+        }
+        return smsTransactionRepository
+                .findByUserIdOrderByTransactionDateDescIdDesc(currentUser.id())
+                .stream()
+                .filter(row -> from == null || !row.getTransactionDate().isBefore(from))
+                .filter(row -> to == null || !row.getTransactionDate().isAfter(to))
+                .toList();
     }
 
     private SmsTransaction require(Long id) {

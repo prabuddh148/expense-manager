@@ -11,6 +11,7 @@ import com.expensemanager.mapper.CategoryMapper;
 import com.expensemanager.repository.CategoryRepository;
 import com.expensemanager.repository.ExpenseRepository;
 import com.expensemanager.security.CurrentUser;
+import com.expensemanager.security.FeatureVisibility;
 import com.expensemanager.util.DateRanges;
 import com.expensemanager.util.Money;
 import org.springframework.stereotype.Service;
@@ -29,15 +30,18 @@ public class CategoryService {
     private final ExpenseRepository expenseRepository;
     private final CategoryMapper categoryMapper;
     private final CurrentUser currentUser;
+    private final FeatureVisibility visibility;
 
     public CategoryService(CategoryRepository categoryRepository,
                            ExpenseRepository expenseRepository,
                            CategoryMapper categoryMapper,
-                           CurrentUser currentUser) {
+                           CurrentUser currentUser,
+                           FeatureVisibility visibility) {
         this.categoryRepository = categoryRepository;
         this.expenseRepository = expenseRepository;
         this.categoryMapper = categoryMapper;
         this.currentUser = currentUser;
+        this.visibility = visibility;
     }
 
     /** Budgets reset every month, so spend is reported for the requested month only. */
@@ -47,7 +51,8 @@ public class CategoryService {
         DateRanges.Range range = monthRange(year, month);
 
         Map<Long, ExpenseRepository.CategoryTotal> totals = new HashMap<>();
-        for (ExpenseRepository.CategoryTotal total : expenseRepository.sumByCategoryBetween(userId, range.from(), range.to())) {
+        for (ExpenseRepository.CategoryTotal total : expenseRepository.sumByCategoryBetween(
+                userId, range.from(), range.to(), visibility.expenseSources())) {
             if (total.getCategoryId() != null) {
                 totals.merge(total.getCategoryId(), total, (a, b) -> a);
             }
@@ -69,7 +74,8 @@ public class CategoryService {
         Long userId = currentUser.id();
         Category category = requireOwned(id, userId);
         DateRanges.Range range = monthRange(year, month);
-        BigDecimal spent = expenseRepository.sumForCategoryBetween(id, range.from(), range.to());
+        BigDecimal spent = expenseRepository.sumForCategoryBetween(
+                id, range.from(), range.to(), visibility.expenseSources());
         return categoryMapper.toResponse(category, spent, expenseRepository.countByCategoryId(id));
     }
 
@@ -106,7 +112,8 @@ public class CategoryService {
         DateRanges.Range range = monthRange(null, null);
         return categoryMapper.toResponse(
                 category,
-                expenseRepository.sumForCategoryBetween(id, range.from(), range.to()),
+                expenseRepository.sumForCategoryBetween(
+                        id, range.from(), range.to(), visibility.expenseSources()),
                 expenseRepository.countByCategoryId(id));
     }
 

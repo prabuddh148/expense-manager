@@ -12,6 +12,7 @@ import com.expensemanager.mapper.ExpenseMapper;
 import com.expensemanager.repository.CategoryRepository;
 import com.expensemanager.repository.ExpenseRepository;
 import com.expensemanager.security.CurrentUser;
+import com.expensemanager.security.FeatureVisibility;
 import com.expensemanager.util.Money;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -37,15 +38,18 @@ public class ExpenseService {
     private final CategoryRepository categoryRepository;
     private final ExpenseMapper expenseMapper;
     private final CurrentUser currentUser;
+    private final FeatureVisibility visibility;
 
     public ExpenseService(ExpenseRepository expenseRepository,
                           CategoryRepository categoryRepository,
                           ExpenseMapper expenseMapper,
-                          CurrentUser currentUser) {
+                          CurrentUser currentUser,
+                          FeatureVisibility visibility) {
         this.expenseRepository = expenseRepository;
         this.categoryRepository = categoryRepository;
         this.expenseMapper = expenseMapper;
         this.currentUser = currentUser;
+        this.visibility = visibility;
     }
 
     @Transactional(readOnly = true)
@@ -61,7 +65,8 @@ public class ExpenseService {
                                               String sortBy,
                                               String direction) {
         Specification<Expense> spec = ExpenseSpecifications.forUser(
-                currentUser.id(), search, categoryId, otherOnly, from, to, minAmount, maxAmount);
+                currentUser.id(), visibility.expenseSources(),
+                search, categoryId, otherOnly, from, to, minAmount, maxAmount);
         Page<Expense> result = expenseRepository.findAll(spec, pageable(page, size, sortBy, direction));
         return PageResponse.of(result, expenseMapper::toResponse);
     }
@@ -74,7 +79,7 @@ public class ExpenseService {
     @Transactional(readOnly = true)
     public List<ExpenseResponse> recent(Long userId, int limit) {
         Specification<Expense> spec = ExpenseSpecifications.forUser(
-                userId, null, null, false, null, null, null, null);
+                userId, visibility.expenseSources(), null, null, false, null, null, null, null);
         return expenseRepository
                 .findAll(spec, PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "date", "id")))
                 .map(expenseMapper::toResponse)

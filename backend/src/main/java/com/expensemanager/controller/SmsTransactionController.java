@@ -10,6 +10,7 @@ import com.expensemanager.entity.SmsTransactionType;
 import com.expensemanager.service.SmsTransactionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -41,17 +43,26 @@ public class SmsTransactionController {
         this.smsTransactionService = smsTransactionService;
     }
 
+    /** {@code from} and {@code to} are inclusive transaction dates; either may be left open. */
     @GetMapping
-    public List<SmsTransactionResponse> list(@RequestParam(required = false) String bank,
-                                             @RequestParam(required = false) SmsTransactionStatus status,
-                                             @RequestParam(required = false) SmsTransactionType type) {
-        return smsTransactionService.list(bank, status, type);
+    public List<SmsTransactionResponse> list(
+            @RequestParam(required = false) String bank,
+            @RequestParam(required = false) SmsTransactionStatus status,
+            @RequestParam(required = false) SmsTransactionType type,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return smsTransactionService.list(bank, status, type, from, to);
     }
 
-    /** The filter row, built from banks actually seen rather than a fixed list. */
+    /**
+     * The filter row, built from banks actually seen rather than a fixed list. Takes the
+     * same date window as the list, so the counts on the chips match what tapping shows.
+     */
     @GetMapping("/banks")
-    public List<SmsBankSummary> banks() {
-        return smsTransactionService.banks();
+    public List<SmsBankSummary> banks(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return smsTransactionService.banks(from, to);
     }
 
     /** Drives the daily reminder and the badge on the tab. */

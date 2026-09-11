@@ -24,6 +24,7 @@ import {
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { AppStackParamList } from '../../navigation/types';
 import { useAuth } from '../../store/AuthContext';
+import { useFeatures } from '../../store/FeaturesContext';
 import { useTheme } from '../../theme';
 import { formatDate, relativeDay } from '../../utils/date';
 import { formatMoney, formatPercent } from '../../utils/format';
@@ -34,6 +35,14 @@ export function DashboardScreen() {
   const navigation = useNavigation<Nav>();
   const { colors, spacing, typography } = useTheme();
   const { user } = useAuth();
+  const { isEnabled } = useFeatures();
+  // A switched-off section takes its cards with it. The figures that remain - the
+  // balance, deductions - already leave it out, because the server is told as well.
+  const showExpenses = isEnabled('expenses');
+  const showEmi = isEnabled('emi');
+  const showPlanner = isEnabled('planner');
+  // Categories are what SMS rows get filed under too, so they outlive Expenses alone.
+  const showCategories = showExpenses || isEnabled('sms');
 
   const fetcher = useCallback(() => dashboardApi.get(), []);
   const { data, loading, refreshing, error, fromCache, refresh, reload } = useAsyncData(
@@ -45,9 +54,11 @@ export function DashboardScreen() {
   // Fired alongside the dashboard rather than after it, and its own skeleton covers the
   // gap - the screen never waits on this to render.
   const categoriesFetcher = useCallback(() => categoryApi.list(), []);
-  const { data: categories, loading: categoriesLoading } = useAsyncData(categoriesFetcher, [], {
-    cacheKey: 'categories',
-  });
+  const { data: categories, loading: categoriesLoading } = useAsyncData(
+    categoriesFetcher,
+    [showExpenses],
+    { cacheKey: 'categories', enabled: showExpenses },
+  );
 
   // Only categories with a budget can have a meaningful remaining figure.
   const budgetedCategories = (categories ?? [])
@@ -130,245 +141,265 @@ export function DashboardScreen() {
         onPress={() => navigation.navigate('SalaryTarget')}
       />
 
-      <View style={[styles.quickRow, { marginTop: spacing.lg }]}>
-        <QuickTile
-          icon="pricetags-outline"
-          label="Categories"
-          onPress={() => navigation.navigate('Categories')}
-        />
-        <QuickTile
-          icon="pie-chart-outline"
-          label="Planner"
-          onPress={() => navigation.navigate('SalaryPlanner')}
-        />
-        <QuickTile
-          icon="add-circle-outline"
-          label="Add expense"
-          onPress={() => navigation.navigate('AddExpense')}
-        />
-      </View>
-
-      <SectionHeader title="Spending" style={{ marginTop: spacing.xl }} />
-      <Card>
-        <View style={styles.row}>
-          <View style={styles.flex}>
-            <Text style={[typography.caption, { color: colors.textMuted }]}>SPENT</Text>
-            <Text style={[typography.title, { color: colors.text }]}>
-              {formatMoney(expenses.totalSpent)}
-            </Text>
-            <Text style={[typography.caption, { color: colors.textMuted, marginTop: 2 }]}>
-              {expenses.transactionCount} transactions
-            </Text>
-          </View>
-          <View style={styles.flex}>
-            <Text style={[typography.caption, { color: colors.textMuted }]}>BUDGET LEFT</Text>
-            <Text
-              style={[
-                typography.title,
-                { color: expenses.remainingBudget < 0 ? colors.danger : colors.success },
-              ]}
-            >
-              {formatMoney(expenses.remainingBudget)}
-            </Text>
-            <Text style={[typography.caption, { color: colors.textMuted, marginTop: 2 }]}>
-              of {formatMoney(expenses.totalBudgeted)}
-            </Text>
-          </View>
-        </View>
-
-        {categoryBreakdown.length > 0 ? (
-          <View style={[styles.donutRow, { marginTop: spacing.lg }]}>
-            <DonutChart
-              data={categoryBreakdown.slice(0, 6).map((item) => ({
-                label: item.name,
-                value: item.amount,
-                color: item.color,
-              }))}
-              size={150}
-              thickness={22}
-              centerValue={formatMoney(expenses.totalSpent)}
-              centerLabel="spent"
+      {showCategories || showPlanner || showExpenses ? (
+        <View style={[styles.quickRow, { marginTop: spacing.lg }]}>
+          {showCategories ? (
+            <QuickTile
+              icon="pricetags-outline"
+              label="Categories"
+              onPress={() => navigation.navigate('Categories')}
             />
-            <View style={[styles.flex, { marginLeft: spacing.md }]}>
-              <ChartLegend
-                items={categoryBreakdown.slice(0, 4).map((item) => ({
-                  label: item.name,
-                  value: item.amount,
-                  percentage: item.percentage,
-                  color: item.color,
-                }))}
-              />
-            </View>
-          </View>
-        ) : (
-          <Text style={[typography.body, { color: colors.textMuted, marginTop: spacing.md }]}>
-            No spending recorded this month yet.
-          </Text>
-        )}
-      </Card>
-
-      {dailyTrend.some((day) => day.amount > 0) ? (
-        <Card style={{ marginTop: spacing.md }}>
-          <Text style={[typography.label, { color: colors.textMuted, marginBottom: spacing.md }]}>
-            DAILY TREND
-          </Text>
-          <LineChart
-            data={dailyTrend.map((day) => ({
-              label: formatDate(day.date).slice(0, 6),
-              value: day.amount,
-            }))}
-          />
-          <View style={{ marginTop: spacing.lg }}>
-            <Text style={[typography.label, { color: colors.textMuted, marginBottom: spacing.sm }]}>
-              BY WEEK
-            </Text>
-            <BarChart data={weeklyBars} height={120} />
-          </View>
-        </Card>
+          ) : null}
+          {showPlanner ? (
+            <QuickTile
+              icon="pie-chart-outline"
+              label="Planner"
+              onPress={() => navigation.navigate('SalaryPlanner')}
+            />
+          ) : null}
+          {showExpenses ? (
+            <QuickTile
+              icon="add-circle-outline"
+              label="Add expense"
+              onPress={() => navigation.navigate('AddExpense')}
+            />
+          ) : null}
+        </View>
       ) : null}
 
-      <SectionHeader
-        title="Category budgets"
-        actionLabel="Manage"
-        onAction={() => navigation.navigate('Categories')}
-        style={{ marginTop: spacing.xl }}
-      />
-      {categoriesLoading ? (
-        <SkeletonCategoryList rows={3} />
-      ) : budgetedCategories.length > 0 ? (
-        <Card padded={false}>
-          {budgetedCategories.map((category, index) => (
-            <View
-              key={category.id}
-              style={[
-                styles.categoryRow,
-                {
-                  padding: spacing.lg,
-                  borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
-                  borderTopColor: colors.border,
-                },
-              ]}
-            >
-              <View
-                style={[styles.dot, { backgroundColor: category.color ?? colors.primary }]}
-              />
-              <View style={[styles.flex, { marginLeft: spacing.md }]}>
-                <Text style={[typography.body, { color: colors.text }]} numberOfLines={1}>
-                  {category.name}
+      {showExpenses ? (
+        <>
+          <SectionHeader title="Spending" style={{ marginTop: spacing.xl }} />
+          <Card>
+            <View style={styles.row}>
+              <View style={styles.flex}>
+                <Text style={[typography.caption, { color: colors.textMuted }]}>SPENT</Text>
+                <Text style={[typography.title, { color: colors.text }]}>
+                  {formatMoney(expenses.totalSpent)}
                 </Text>
                 <Text style={[typography.caption, { color: colors.textMuted, marginTop: 2 }]}>
-                  {formatMoney(category.spentAmount)} of {formatMoney(category.allocatedAmount)}
+                  {expenses.transactionCount} transactions
                 </Text>
               </View>
-              <View style={styles.alignRight}>
+              <View style={styles.flex}>
+                <Text style={[typography.caption, { color: colors.textMuted }]}>BUDGET LEFT</Text>
                 <Text
                   style={[
-                    typography.heading,
-                    { color: category.overspent ? colors.danger : colors.success },
+                    typography.title,
+                    { color: expenses.remainingBudget < 0 ? colors.danger : colors.success },
                   ]}
                 >
-                  {category.overspent ? '-' : ''}
-                  {formatMoney(Math.abs(category.remainingAmount))}
+                  {formatMoney(expenses.remainingBudget)}
                 </Text>
-                <Text style={[typography.caption, { color: colors.textMuted, fontSize: 10 }]}>
-                  {category.overspent ? 'OVER' : 'LEFT'}
+                <Text style={[typography.caption, { color: colors.textMuted, marginTop: 2 }]}>
+                  of {formatMoney(expenses.totalBudgeted)}
                 </Text>
               </View>
             </View>
-          ))}
-        </Card>
-      ) : (
-        <Card>
-          <Text style={[typography.body, { color: colors.textMuted }]}>
-            Give your categories a monthly budget to track what is left in each one.
-          </Text>
-        </Card>
-      )}
 
-      <SectionHeader
-        title="Loans & EMI"
-        actionLabel="Manage"
-        onAction={() => navigation.navigate('Tabs', { screen: 'EmiTab' })}
-        style={{ marginTop: spacing.xl }}
-      />
-      <Card>
-        <View style={styles.row}>
-          <View style={styles.flex}>
-            <Text style={[typography.caption, { color: colors.textMuted }]}>OUTSTANDING</Text>
-            <Text style={[typography.title, { color: colors.text }]}>
-              {formatMoney(loans.totalOutstanding)}
-            </Text>
-          </View>
-          <View style={styles.flex}>
-            <Text style={[typography.caption, { color: colors.textMuted }]}>MONTHLY EMI</Text>
-            <Text style={[typography.title, { color: colors.text }]}>
-              {formatMoney(loans.monthlyEmi)}
-            </Text>
-          </View>
-        </View>
+            {categoryBreakdown.length > 0 ? (
+              <View style={[styles.donutRow, { marginTop: spacing.lg }]}>
+                <DonutChart
+                  data={categoryBreakdown.slice(0, 6).map((item) => ({
+                    label: item.name,
+                    value: item.amount,
+                    color: item.color,
+                  }))}
+                  size={150}
+                  thickness={22}
+                  centerValue={formatMoney(expenses.totalSpent)}
+                  centerLabel="spent"
+                />
+                <View style={[styles.flex, { marginLeft: spacing.md }]}>
+                  <ChartLegend
+                    items={categoryBreakdown.slice(0, 4).map((item) => ({
+                      label: item.name,
+                      value: item.amount,
+                      percentage: item.percentage,
+                      color: item.color,
+                    }))}
+                  />
+                </View>
+              </View>
+            ) : (
+              <Text style={[typography.body, { color: colors.textMuted, marginTop: spacing.md }]}>
+                No spending recorded this month yet.
+              </Text>
+            )}
+          </Card>
 
-        <View style={{ marginTop: spacing.lg }}>
-          <ProgressBar
-            percentage={loans.progressPercentage}
-            color={colors.success}
-            label={`${formatMoney(loans.totalPaid)} repaid`}
-            trailing={formatPercent(loans.progressPercentage)}
-          />
-          <Text style={[typography.caption, { color: colors.textMuted, marginTop: spacing.sm }]}>
-            {loans.activeLoans} active {loans.activeLoans === 1 ? 'loan' : 'loans'}, {formatMoney(loans.paidThisMonth)} paid this month
-          </Text>
-        </View>
-      </Card>
-
-      <SectionHeader
-        title="Recent expenses"
-        actionLabel="See all"
-        onAction={() => navigation.navigate('Tabs', { screen: 'ExpensesTab' })}
-        style={{ marginTop: spacing.xl }}
-      />
-      {recentExpenses.length === 0 ? (
-        <Card>
-          <EmptyState
-            icon="receipt-outline"
-            title="No expenses yet"
-            message="Add your first expense to see it here."
-            actionLabel="Add expense"
-            onAction={() => navigation.navigate('AddExpense')}
-          />
-        </Card>
-      ) : (
-        <Card padded={false}>
-          {recentExpenses.map((expense, index) => (
-            <Pressable
-              key={expense.id}
-              onPress={() => navigation.navigate('ExpenseDetail', { expenseId: expense.id })}
-              style={[
-                styles.expenseRow,
-                {
-                  padding: spacing.lg,
-                  borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
-                  borderTopColor: colors.border,
-                },
-              ]}
-            >
-              <View
-                style={[styles.dot, { backgroundColor: expense.categoryColor ?? colors.textMuted }]}
+          {dailyTrend.some((day) => day.amount > 0) ? (
+            <Card style={{ marginTop: spacing.md }}>
+              <Text style={[typography.label, { color: colors.textMuted, marginBottom: spacing.md }]}>
+                DAILY TREND
+              </Text>
+              <LineChart
+                data={dailyTrend.map((day) => ({
+                  label: formatDate(day.date).slice(0, 6),
+                  value: day.amount,
+                }))}
               />
-              <View style={[styles.flex, { marginLeft: spacing.md }]}>
-                <Text style={[typography.body, { color: colors.text }]} numberOfLines={1}>
-                  {expense.displayName}
+              <View style={{ marginTop: spacing.lg }}>
+                <Text style={[typography.label, { color: colors.textMuted, marginBottom: spacing.sm }]}>
+                  BY WEEK
                 </Text>
-                <Text style={[typography.caption, { color: colors.textMuted, marginTop: 2 }]}>
-                  {relativeDay(expense.date)}
+                <BarChart data={weeklyBars} height={120} />
+              </View>
+            </Card>
+          ) : null}
+
+          <SectionHeader
+            title="Category budgets"
+            actionLabel="Manage"
+            onAction={() => navigation.navigate('Categories')}
+            style={{ marginTop: spacing.xl }}
+          />
+          {categoriesLoading ? (
+            <SkeletonCategoryList rows={3} />
+          ) : budgetedCategories.length > 0 ? (
+            <Card padded={false}>
+              {budgetedCategories.map((category, index) => (
+                <View
+                  key={category.id}
+                  style={[
+                    styles.categoryRow,
+                    {
+                      padding: spacing.lg,
+                      borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
+                      borderTopColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[styles.dot, { backgroundColor: category.color ?? colors.primary }]}
+                  />
+                  <View style={[styles.flex, { marginLeft: spacing.md }]}>
+                    <Text style={[typography.body, { color: colors.text }]} numberOfLines={1}>
+                      {category.name}
+                    </Text>
+                    <Text style={[typography.caption, { color: colors.textMuted, marginTop: 2 }]}>
+                      {formatMoney(category.spentAmount)} of {formatMoney(category.allocatedAmount)}
+                    </Text>
+                  </View>
+                  <View style={styles.alignRight}>
+                    <Text
+                      style={[
+                        typography.heading,
+                        { color: category.overspent ? colors.danger : colors.success },
+                      ]}
+                    >
+                      {category.overspent ? '-' : ''}
+                      {formatMoney(Math.abs(category.remainingAmount))}
+                    </Text>
+                    <Text style={[typography.caption, { color: colors.textMuted, fontSize: 10 }]}>
+                      {category.overspent ? 'OVER' : 'LEFT'}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </Card>
+          ) : (
+            <Card>
+              <Text style={[typography.body, { color: colors.textMuted }]}>
+                Give your categories a monthly budget to track what is left in each one.
+              </Text>
+            </Card>
+          )}
+        </>
+      ) : null}
+
+      {showEmi ? (
+        <>
+          <SectionHeader
+            title="Loans & EMI"
+            actionLabel="Manage"
+            onAction={() => navigation.navigate('Tabs', { screen: 'EmiTab' })}
+            style={{ marginTop: spacing.xl }}
+          />
+          <Card>
+            <View style={styles.row}>
+              <View style={styles.flex}>
+                <Text style={[typography.caption, { color: colors.textMuted }]}>OUTSTANDING</Text>
+                <Text style={[typography.title, { color: colors.text }]}>
+                  {formatMoney(loans.totalOutstanding)}
                 </Text>
               </View>
-              <Text style={[typography.heading, { color: colors.text }]}>
-                -{formatMoney(expense.amount)}
+              <View style={styles.flex}>
+                <Text style={[typography.caption, { color: colors.textMuted }]}>MONTHLY EMI</Text>
+                <Text style={[typography.title, { color: colors.text }]}>
+                  {formatMoney(loans.monthlyEmi)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ marginTop: spacing.lg }}>
+              <ProgressBar
+                percentage={loans.progressPercentage}
+                color={colors.success}
+                label={`${formatMoney(loans.totalPaid)} repaid`}
+                trailing={formatPercent(loans.progressPercentage)}
+              />
+              <Text style={[typography.caption, { color: colors.textMuted, marginTop: spacing.sm }]}>
+                {loans.activeLoans} active {loans.activeLoans === 1 ? 'loan' : 'loans'}, {formatMoney(loans.paidThisMonth)} paid this month
               </Text>
-            </Pressable>
-          ))}
-        </Card>
-      )}
+            </View>
+          </Card>
+        </>
+      ) : null}
+
+      {showExpenses ? (
+        <>
+          <SectionHeader
+            title="Recent expenses"
+            actionLabel="See all"
+            onAction={() => navigation.navigate('Tabs', { screen: 'ExpensesTab' })}
+            style={{ marginTop: spacing.xl }}
+          />
+          {recentExpenses.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon="receipt-outline"
+                title="No expenses yet"
+                message="Add your first expense to see it here."
+                actionLabel="Add expense"
+                onAction={() => navigation.navigate('AddExpense')}
+              />
+            </Card>
+          ) : (
+            <Card padded={false}>
+              {recentExpenses.map((expense, index) => (
+                <Pressable
+                  key={expense.id}
+                  onPress={() => navigation.navigate('ExpenseDetail', { expenseId: expense.id })}
+                  style={[
+                    styles.expenseRow,
+                    {
+                      padding: spacing.lg,
+                      borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
+                      borderTopColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[styles.dot, { backgroundColor: expense.categoryColor ?? colors.textMuted }]}
+                  />
+                  <View style={[styles.flex, { marginLeft: spacing.md }]}>
+                    <Text style={[typography.body, { color: colors.text }]} numberOfLines={1}>
+                      {expense.displayName}
+                    </Text>
+                    <Text style={[typography.caption, { color: colors.textMuted, marginTop: 2 }]}>
+                      {relativeDay(expense.date)}
+                    </Text>
+                  </View>
+                  <Text style={[typography.heading, { color: colors.text }]}>
+                    -{formatMoney(expense.amount)}
+                  </Text>
+                </Pressable>
+              ))}
+            </Card>
+          )}
+        </>
+      ) : null}
     </Screen>
   );
 }

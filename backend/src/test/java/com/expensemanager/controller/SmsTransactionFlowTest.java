@@ -209,6 +209,41 @@ class SmsTransactionFlowTest extends ApiTestBase {
     }
 
     @Test
+    @DisplayName("a date range narrows the list and the bank counts alike, both ends inclusive")
+    void dateRangeApplies() throws Exception {
+        List<SmsTransactionRequest> spread = List.of(
+                new SmsTransactionRequest("ICICI", "XX1234", new BigDecimal("100"),
+                        SmsTransactionType.DEBIT, DATE.minusDays(5), null, "Shop", "D1", null),
+                new SmsTransactionRequest("ICICI", "XX1234", new BigDecimal("200"),
+                        SmsTransactionType.DEBIT, DATE.minusDays(2), null, "Shop", "D2", null),
+                new SmsTransactionRequest("HDFC", "XX4321", new BigDecimal("300"),
+                        SmsTransactionType.DEBIT, DATE, null, "Shop", "D3", null));
+        mockMvc.perform(authed(post("/api/sms-transactions/import"), spread))
+                .andExpect(jsonPath("$.imported").value(3));
+
+        String from = DATE.minusDays(2).toString();
+        String to = DATE.toString();
+
+        mockMvc.perform(authed(get("/api/sms-transactions?from=" + from + "&to=" + to)))
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].amount").value(300.00))
+                .andExpect(jsonPath("$[1].amount").value(200.00));
+
+        mockMvc.perform(authed(get("/api/sms-transactions?to=" + DATE.minusDays(3))))
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].amount").value(100.00));
+
+        mockMvc.perform(authed(get("/api/sms-transactions/banks?from=" + from + "&to=" + to)))
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].bank").value("HDFC"))
+                .andExpect(jsonPath("$[1].bank").value("ICICI"))
+                .andExpect(jsonPath("$[1].total").value(1));
+
+        mockMvc.perform(authed(get("/api/sms-transactions?from=" + to + "&to=" + from)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("pending count drives the reminder and only counts uncategorised")
     void pendingCountTracksUncategorised() throws Exception {
         long id = importOne(icici("500", "REF1"));

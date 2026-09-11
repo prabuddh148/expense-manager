@@ -10,6 +10,7 @@ import com.expensemanager.repository.ExpenseRepository;
 import com.expensemanager.repository.SalaryAdjustmentRepository;
 import com.expensemanager.repository.SalaryRepository;
 import com.expensemanager.security.CurrentUser;
+import com.expensemanager.security.FeatureVisibility;
 import com.expensemanager.util.DateRanges;
 import com.expensemanager.util.Money;
 import org.springframework.stereotype.Service;
@@ -32,17 +33,20 @@ public class SalaryService {
     private final EmiPaymentRepository emiPaymentRepository;
     private final SalaryAdjustmentRepository salaryAdjustmentRepository;
     private final CurrentUser currentUser;
+    private final FeatureVisibility visibility;
 
     public SalaryService(SalaryRepository salaryRepository,
                          ExpenseRepository expenseRepository,
                          EmiPaymentRepository emiPaymentRepository,
                          SalaryAdjustmentRepository salaryAdjustmentRepository,
-                         CurrentUser currentUser) {
+                         CurrentUser currentUser,
+                         FeatureVisibility visibility) {
         this.salaryRepository = salaryRepository;
         this.expenseRepository = expenseRepository;
         this.emiPaymentRepository = emiPaymentRepository;
         this.salaryAdjustmentRepository = salaryAdjustmentRepository;
         this.currentUser = currentUser;
+        this.visibility = visibility;
     }
 
     /** Returns the salary for a month, or a zeroed placeholder when the user has not set one. */
@@ -139,15 +143,24 @@ public class SalaryService {
                 salary.getUpdatedAt());
     }
 
-    /** Money credited on top of the salary in the window, e.g. a repayment received. */
+    /**
+     * Money credited on top of the salary in the window, e.g. a repayment received. All of
+     * it comes from the Money Tracker, so it goes when that section is switched off.
+     */
     public BigDecimal additionsFor(Long userId, LocalDate from, LocalDate to) {
+        if (!visibility.salaryAdditionsVisible()) {
+            return Money.ZERO;
+        }
         return Money.scale(salaryAdjustmentRepository.sumForUserBetween(userId, from, to));
     }
 
-    /** Expenses plus EMI instalments paid in the window. */
+    /** Expenses plus EMI instalments paid in the window, less any section switched off. */
     public BigDecimal deductionsFor(Long userId, LocalDate from, LocalDate to) {
+        BigDecimal emi = visibility.emiVisible()
+                ? emiPaymentRepository.sumPaidForUserBetween(userId, from, to)
+                : Money.ZERO;
         return Money.add(
-                expenseRepository.sumForUserBetween(userId, from, to),
-                emiPaymentRepository.sumPaidForUserBetween(userId, from, to));
+                expenseRepository.sumForUserBetween(userId, from, to, visibility.expenseSources()),
+                emi);
     }
 }

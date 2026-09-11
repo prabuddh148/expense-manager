@@ -18,6 +18,7 @@ import {
   SectionHeader,
 } from '../../components';
 import { useAsyncData } from '../../hooks/useAsyncData';
+import { useFeatures } from '../../store/FeaturesContext';
 import { useTheme } from '../../theme';
 import { AnalyticsPeriod } from '../../types/api';
 import { formatDate, toIsoDate } from '../../utils/date';
@@ -35,6 +36,9 @@ const PERIODS: PeriodOption[] = [
 
 export function AnalyticsScreen() {
   const { colors, radius, spacing, typography } = useTheme();
+  const { isEnabled } = useFeatures();
+  const showExpenses = isEnabled('expenses');
+  const showEmi = isEnabled('emi');
 
   const [period, setPeriod] = useState<AnalyticsPeriod>('this_month');
   const [customOpen, setCustomOpen] = useState(false);
@@ -123,6 +127,29 @@ export function AnalyticsScreen() {
 
   const analytics = data!;
   const hasSpending = analytics.totalExpenses > 0 || analytics.totalEmiPaid > 0;
+  // The server already leaves hidden sections out of the totals; this drops the tiles
+  // that would otherwise sit there reading zero.
+  const metrics: { label: string; value: string; tone?: string }[] = [
+    ...(showExpenses ? [{ label: 'TOTAL SPENT', value: formatMoney(analytics.totalExpenses) }] : []),
+    ...(showEmi ? [{ label: 'EMI PAID', value: formatMoney(analytics.totalEmiPaid) }] : []),
+    { label: 'DEDUCTIONS', value: formatMoney(analytics.totalDeductions) },
+    {
+      label: 'REMAINING',
+      value: formatMoney(analytics.remainingAmount),
+      tone: analytics.remainingAmount < 0 ? colors.danger : colors.success,
+    },
+    ...(showExpenses
+      ? [
+          { label: 'TRANSACTIONS', value: String(analytics.transactionCount) },
+          { label: 'AVG PER DAY', value: formatMoney(analytics.averagePerDay) },
+        ]
+      : []),
+  ];
+  const metricRows = metrics.reduce<(typeof metrics)[]>((rows, metric, index) => {
+    if (index % 2 === 0) rows.push([]);
+    rows[rows.length - 1].push(metric);
+    return rows;
+  }, []);
 
   // Daily bars for short windows, weekly buckets for anything longer than a fortnight.
   const bars =
@@ -156,30 +183,26 @@ export function AnalyticsScreen() {
       </Text>
 
       <Card>
-        <View style={styles.grid}>
-          <Metric label="TOTAL SPENT" value={formatMoney(analytics.totalExpenses)} />
-          <Metric label="EMI PAID" value={formatMoney(analytics.totalEmiPaid)} />
-        </View>
-        <View style={[styles.grid, { marginTop: spacing.lg }]}>
-          <Metric label="DEDUCTIONS" value={formatMoney(analytics.totalDeductions)} />
-          <Metric
-            label="REMAINING"
-            value={formatMoney(analytics.remainingAmount)}
-            tone={analytics.remainingAmount < 0 ? colors.danger : colors.success}
-          />
-        </View>
-        <View style={[styles.grid, { marginTop: spacing.lg }]}>
-          <Metric label="TRANSACTIONS" value={String(analytics.transactionCount)} />
-          <Metric label="AVG PER DAY" value={formatMoney(analytics.averagePerDay)} />
-        </View>
-        {analytics.highestDay ? (
+        {metricRows.map((row, index) => (
+          <View
+            key={row[0].label}
+            style={[styles.grid, index === 0 ? null : { marginTop: spacing.lg }]}
+          >
+            {row.map((metric) => (
+              <Metric key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} />
+            ))}
+            {/* An odd tile keeps its half width instead of stretching across. */}
+            {row.length === 1 ? <View style={styles.metric} /> : null}
+          </View>
+        ))}
+        {showExpenses && analytics.highestDay ? (
           <Text style={[typography.caption, { color: colors.textMuted, marginTop: spacing.lg }]}>
             Highest day: {formatDate(analytics.highestDay)} ({formatMoney(analytics.highestDayAmount)})
           </Text>
         ) : null}
       </Card>
 
-      {hasSpending ? (
+      {!showExpenses ? null : hasSpending ? (
         <>
           <SectionHeader title="Spending over time" style={{ marginTop: spacing.xl }} />
           <Card>
@@ -233,7 +256,11 @@ export function AnalyticsScreen() {
           <EmptyState
             icon="stats-chart-outline"
             title="Nothing to analyse yet"
-            message="Add expenses or record an EMI payment in this period and the charts will fill in."
+            message={
+              showEmi
+                ? 'Add expenses or record an EMI payment in this period and the charts will fill in.'
+                : 'Add expenses in this period and the charts will fill in.'
+            }
           />
         </Card>
       )}

@@ -115,17 +115,18 @@ export function SmsTransactionsScreen() {
 
   const runScan = async () => {
     const result = await scanner.scan();
-    if (result) {
+    if (!result) return;
+    if (result.error) {
+      showToast(result.error, 'error');
+    } else {
       showToast(
         result.imported > 0
           ? `${result.imported} new ${result.imported === 1 ? 'transaction' : 'transactions'} found`
           : 'No new transactions found',
         'success',
       );
-      reloadAll();
-    } else if (scanner.error) {
-      showToast(scanner.error, 'error');
     }
+    reloadAll();
   };
 
   const chooseCategory = async (transaction: SmsTransaction, category: Category) => {
@@ -409,6 +410,21 @@ export function SmsTransactionsScreen() {
                 </Pressable>
               ) : null}
             </View>
+
+            {/* The scan on open has no toast, so without this a failing one looked
+                exactly like an inbox with nothing new in it. */}
+            {scanner.error ? (
+              <Text style={[typography.caption, { color: colors.danger, marginTop: spacing.md }]}>
+                Scan failed: {scanner.error}
+              </Text>
+            ) : null}
+            {scanner.lastResult && scanner.lastResult.rejected > 0 ? (
+              <Text style={[typography.caption, { color: colors.warning, marginTop: spacing.md }]}>
+                {scanner.lastResult.rejected}{' '}
+                {scanner.lastResult.rejected === 1 ? 'message was' : 'messages were'} skipped
+                because the server would not accept them.
+              </Text>
+            ) : null}
 
             {/* Banks come from what has been detected, so this row grows by itself. */}
             <ScrollView

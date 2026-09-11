@@ -1,4 +1,5 @@
 import type { SmsTransactionPayload } from '../types/api';
+import { fromIsoDate, toIsoDate } from './date';
 
 /**
  * Turns a bank SMS into a transaction, or decides it is not one.
@@ -94,12 +95,32 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 
 const TIME_PATTERN = /\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?\b/i;
 
+/**
+ * A printed date this far from when the message arrived is not the transaction date -
+ * it is a misread (month and day swapped, a reference number that looks like a date)
+ * and would file the row under the wrong month, where nobody looks for it.
+ */
+const MAX_DAYS_BEFORE_RECEIPT = 7;
+const MAX_DAYS_AFTER_RECEIPT = 1;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 function isoFrom(day: number, month: number, year: number): string | null {
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
   const fullYear = year < 100 ? 2000 + year : year;
   if (fullYear < 2000 || fullYear > 2100) return null;
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${fullYear}-${pad(month)}-${pad(day)}`;
+  // Checked against a real calendar, not just 1-31: 31-09 is not a date, and the
+  // server refuses the whole batch that carries one.
+  const date = new Date(fullYear, month - 1, day);
+  if (date.getFullYear() !== fullYear || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return toIsoDate(date);
+}
+
+function isPlausible(iso: string, receivedAt: number): boolean {
+  const received = new Date(receivedAt);
+  const receivedDay = new Date(received.getFullYear(), received.getMonth(), received.getDate());
+  const days = Math.round((fromIsoDate(iso).getTime() - receivedDay.getTime()) / DAY_MS);
+  return days >= -MAX_DAYS_BEFORE_RECEIPT && days <= MAX_DAYS_AFTER_RECEIPT;
 }
 
 function bankFrom(sender: string | null): string | null {
@@ -126,16 +147,17 @@ function parseTime(body: string): string | null {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
 }
 
-function parseDate(body: string, fallback: number): string {
+function parseDate(body: string, receivedAt: number): string {
   for (const { pattern, build } of DATE_PATTERNS) {
     const match = body.match(pattern);
     if (match) {
       const iso = build(match);
-      if (iso) return iso;
+      if (iso && isPlausible(iso, receivedAt)) return iso;
     }
   }
-  // No date printed: the message arrived when it arrived.
-  return new Date(fallback).toISOString().slice(0, 10);
+  // No usable date printed: the message arrived when it arrived. Local, not UTC - a
+  // payment at 00:30 IST is on that day, not the one before.
+  return toIsoDate(new Date(receivedAt));
 }
 
 function clean(value: string | undefined | null): string | null {
@@ -165,7 +187,7 @@ export function parseSms(
 
   // "Credit Card" and "Debit Card" name the instrument, not the direction the money
   // went. Left in, every card spend read as both a debit and a credit and was dropped.
-  const direction = body.replace(/(?:credit|debit)s*cards?/gi, " card ");
+  const direction = body.replace(/\b(?:credit|debit)\s*cards?\b/gi, ' card ');
 
   const isDebit = DEBIT_WORDS.test(direction);
   const isCredit = CREDIT_WORDS.test(direction);

@@ -1,5 +1,7 @@
 # Java / Maven
 backend/target/
+activity-service/target/
+api-gateway/target/
 *.class
 
 # Node / Expo

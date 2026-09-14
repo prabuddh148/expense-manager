@@ -11,7 +11,9 @@ import com.expensemanager.repository.LoanRepository;
 import com.expensemanager.repository.SalaryRepository;
 import com.expensemanager.security.CurrentUser;
 import com.expensemanager.util.DateRanges;
+import com.expensemanager.cache.CacheNames;
 import com.expensemanager.util.Money;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,6 +55,8 @@ public class DashboardService {
         this.currentUser = currentUser;
     }
 
+    /** Cached in Redis when it is enabled; see {@link com.expensemanager.cache.UserScopedKeyGenerator}. */
+    @Cacheable(cacheNames = CacheNames.DASHBOARD, keyGenerator = CacheNames.KEY_GENERATOR)
     @Transactional(readOnly = true)
     public DashboardResponse get(Integer year, Integer month) {
         Long userId = currentUser.id();

@@ -9,14 +9,13 @@
         <relativePath/>
     </parent>
     <groupId>com.expensemanager</groupId>
-    <artifactId>expense-manager-api</artifactId>
+    <artifactId>activity-service</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>expense-manager-api</name>
-    <description>REST API for the Expense Manager mobile app</description>
+    <name>activity-service</name>
+    <description>Consumes data-change events from Kafka and serves each user's activity feed</description>
     <properties>
         <java.version>25</java.version>
         <jjwt.version>0.12.6</jjwt.version>
-        <google-api-client.version>2.7.0</google-api-client.version>
     </properties>
     <dependencies>
         <dependency>
@@ -33,26 +32,8 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
-
-        <!-- Loads backend/.env into the environment so local runs need no shell exports.
-             Real environment variables always win, so production is unaffected. -->
-        <dependency>
-            <groupId>me.paulschwarz</groupId>
-            <artifactId>spring-dotenv</artifactId>
-            <version>4.0.0</version>
-        </dependency>
-
-        <!-- Redis caches the dashboard and analytics responses. Only switched on with
-             REDIS_ENABLED=true (docker-compose); without it no Redis connection is ever made. -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-
-        <!-- Kafka carries data-change events to the activity-service. Only switched on with
-             KAFKA_ENABLED=true (docker-compose); without it nothing is ever sent. -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
@@ -64,6 +45,7 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Validates the access tokens the expense API issues, with the same shared secret. -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
@@ -82,24 +64,11 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Verifies Google ID tokens sent up by the mobile app. -->
-        <dependency>
-            <groupId>com.google.api-client</groupId>
-            <artifactId>google-api-client</artifactId>
-            <version>${google-api-client.version}</version>
-        </dependency>
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <!-- Tests run on in-memory H2 (PostgreSQL mode) so they need no database credentials. -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>

@@ -48,6 +48,10 @@ actually left.
 | Backend | Java 25, Spring Boot 3.5, Spring Security, Spring Data JPA |
 | Auth | jjwt (HS256), BCrypt, opaque rotating refresh tokens, Google API client |
 | Database | PostgreSQL 14+ (H2 in PostgreSQL mode for tests) |
+| Cache | Redis 7 via Spring Cache (dashboard + analytics responses) |
+| Messaging | Apache Kafka 3.9 (KRaft) via Spring Kafka |
+| Microservices | activity-service (Kafka consumer), api-gateway (Spring Cloud Gateway) |
+| Containers | Docker multi-stage images, Docker Compose |
 | Tests | JUnit 5, MockMvc, AssertJ, Spring Security Test |
 
 ---
@@ -71,6 +75,111 @@ rows - covered by tests.
 
 ---
 
+## Microservices, Kafka, Redis and Docker
+
+The deployed app (Render) is the single Spring Boot API above. The same code also runs as a
+small microservices system with Docker Compose. Redis and Kafka are switched on by
+environment flags, and both flags are **off by default**, so the Render deploy, the mobile
+app and the test suite work exactly as before.
+
+```
+                  mobile app / curl
+                         |
+                 api-gateway :8000            Spring Cloud Gateway, X-Request-Id on every call
+                 /                 \
+      /api/activity/**            /api/**
+             |                       |
+  activity-service :8082      expense-api :8080 ──── Redis   (dashboard + analytics cache)
+             |                       |
+     Postgres "activity"     Postgres "expense_manager"
+             ^                       |
+             └────── Kafka  topic expense-manager.activity (3 partitions, key = userId)
+```
+
+| Service | Role | Owns |
+| --- | --- | --- |
+| `api-gateway` | Single entry point; routes by path, adds a correlation id, logs each request | nothing |
+| `backend` (expense-api) | All existing endpoints; publishes a data-change event after every committed write | `expense_manager` DB |
+| `activity-service` | Consumes those events and serves each user's activity feed | `activity` DB |
+
+### How a write flows
+
+1. `POST /api/expenses` reaches the expense API through the gateway.
+2. `EntityChangeTracker` (a Hibernate listener) records the insert. It only publishes a
+   `DataCommittedEvent` **after the transaction commits**, so a rolled-back write publishes nothing.
+   No service had to change for this, and no write path can be missed.
+3. Two listeners handle that event:
+   - `UserCacheVersion` increments the user's cache version in Redis, so no old dashboard is served again.
+   - `ActivityEventPublisher` sends the change to Kafka on a background thread, so a slow
+     broker never delays the response.
+4. `activity-service` consumes the message, stores it once (idempotent on `eventId`) and serves
+   it at `GET /api/activity`.
+
+### Redis design points
+
+- **What is cached:** `GET /api/dashboard` and `GET /api/analytics`, the two heaviest reads.
+- **Key** = `userId : version : today : hidden features : method : args`. The hidden-features
+  header and today's date change the result, so both are part of the key.
+- **Invalidation by versioning:** a write does not search for keys to delete. It bumps a
+  per-user counter, old keys stop matching, and they expire on their TTL (10 min). This is
+  race-free because the bump happens after commit.
+- **Fail-open:** any Redis error is logged and the query goes to the database instead
+  (`RedisUnavailableTest`).
+- Redis runs with `volatile-lru`, so memory pressure can evict cache entries but never the
+  version counters.
+
+### Kafka design points
+
+- Messages are keyed by user id, which keeps each user's events in order within one partition.
+- The producer uses `acks=all` with idempotence on, and `max.block.ms=5s`, so a dead broker
+  cannot hang a thread (`KafkaUnavailableTest`).
+- The consumer is **at-least-once + idempotent**: a unique `event_id` column absorbs redeliveries.
+- **Dead-letter topic:** a failing record is retried 3 times, then moved to
+  `expense-manager.activity-dlt`. A malformed record goes there directly through
+  `ErrorHandlingDeserializer`, so one bad record never blocks its partition.
+- Trade-off: the event is sent after commit, so a crash in that small window loses it. If
+  the feed had to be complete, the next step would be a transactional outbox table.
+
+### Microservice design points
+
+- **Database per service:** activity-service never reads the expense API's tables.
+- **Stateless auth across services:** activity-service verifies the same JWT with the shared
+  secret. It makes no per-request call to the expense API.
+- **Contract, not shared code:** each service keeps its own copy of the message record and
+  ignores unknown fields, so either service can be deployed on its own.
+
+### Run it
+
+```bash
+docker compose up --build
+```
+
+| URL | What |
+| --- | --- |
+| http://localhost:8000/api/health | expense API through the gateway |
+| http://localhost:8000/api/activity | activity feed (needs `Authorization: Bearer <token>`) |
+| http://localhost:8090 | Kafka UI - watch messages land on the topic |
+| localhost:6379 | Redis (`docker compose exec redis redis-cli keys '*'`) |
+
+Try it end to end:
+
+```bash
+# sign up through the gateway and keep the token
+TOKEN=$(curl -s -X POST localhost:8000/api/auth/signup -H 'Content-Type: application/json' \
+  -d '{"name":"Demo","email":"demo@example.com","password":"password123"}' | jq -r .accessToken)
+
+curl -s -X POST localhost:8000/api/expenses -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"amount":250,"expenseName":"Chai"}'
+
+curl -s localhost:8000/api/dashboard -H "Authorization: Bearer $TOKEN"   # miss -> stored in Redis
+curl -s localhost:8000/api/dashboard -H "Authorization: Bearer $TOKEN"   # served from Redis
+curl -s localhost:8000/api/activity  -H "Authorization: Bearer $TOKEN"   # event came via Kafka
+```
+
+To point the mobile app at this stack, set `EXPO_PUBLIC_API_URL=http://<your-lan-ip>:8000/api`.
+
+---
+
 ## Folder structure
 
 ```
@@ -86,7 +195,14 @@ expense-manager/
 │       ├── mapper/        entity -> DTO
 │       ├── security/      JWT, filters, Google verification, CurrentUser
 │       ├── exception/     ApiException hierarchy + global handler
+│       ├── events/        Hibernate change tracker, Kafka publisher
+│       ├── cache/         Redis cache config, per-user versioned keys
 │       └── util/          Money, DateRanges
+│
+├── activity-service/      Kafka consumer + activity feed API (own database)
+├── api-gateway/           Spring Cloud Gateway routes, request-id filter
+├── docker/postgres/       creates one database per service
+├── docker-compose.yml     gateway, services, Postgres, Redis, Kafka, Kafka UI
 │
 ├── frontend/
 │   ├── App.tsx            provider stack

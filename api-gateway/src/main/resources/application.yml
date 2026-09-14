@@ -1,0 +1,30 @@
+server:
+  port: ${PORT:8000}
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            # More specific route first: the activity feed lives in its own service.
+            - id: activity-service
+              uri: ${ACTIVITY_SERVICE_URL:http://localhost:8082}
+              order: 0
+              predicates:
+                - Path=/api/activity/**, /api/activity
+            # Everything else under /api is the existing expense API, passed through untouched
+            # (headers, body and status), so the mobile app works the same through the gateway.
+            - id: expense-api
+              uri: ${EXPENSE_API_URL:http://localhost:8080}
+              order: 1
+              predicates:
+                - Path=/api/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway

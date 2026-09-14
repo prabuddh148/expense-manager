@@ -1,0 +1,149 @@
+# Full microservices stack on one machine:
+#
+#   mobile app / curl
+#          |
+#     api-gateway :8000 ──/api/activity/**──> activity-service :8082 ──> Postgres (activity)
+#          |                                         ^
+#          └──/api/**──> expense-api :8080 ──> Postgres (expense_manager)
+#                            |      |                |
+#                          Redis  Kafka ─────────────┘  topic expense-manager.activity
+#
+#   docker compose up --build
+#   Kafka UI: http://localhost:8090
+#
+# Local use only - the passwords and JWT secret below are development defaults.
+
+name: expense-manager
+
+x-jwt-secret: &jwt-secret ${JWT_SECRET:-local-docker-only-jwt-secret-change-me-0123456789}
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: expense_manager
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Creates the activity-service's own database on first start.
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    # volatile-lru only ever evicts keys that have a TTL (cache entries), never the
+    # per-user cache version counters, which have none.
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-lru"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Single Kafka broker in KRaft mode - no ZooKeeper.
+  kafka:
+    image: apache/kafka:3.9.1
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # PLAINTEXT for containers (kafka:9092), EXTERNAL for tools on the host (localhost:29092).
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  expense-api:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/expense_manager
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_POOL_SIZE: 10
+      JWT_SECRET: *jwt-secret
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+      REDIS_ENABLED: "true"
+      REDIS_HOST: redis
+      KAFKA_ENABLED: "true"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  activity-service:
+    build: ./activity-service
+    ports:
+      - "8082:8082"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/activity
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: *jwt-secret
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      EXPENSE_API_URL: http://expense-api:8080
+      ACTIVITY_SERVICE_URL: http://activity-service:8082
+    depends_on:
+      - expense-api
+      - activity-service
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  kafka-data:

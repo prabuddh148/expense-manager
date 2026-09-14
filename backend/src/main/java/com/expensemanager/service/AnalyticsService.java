@@ -10,7 +10,9 @@ import com.expensemanager.repository.SalaryRepository;
 import com.expensemanager.security.CurrentUser;
 import com.expensemanager.security.FeatureVisibility;
 import com.expensemanager.util.DateRanges;
+import com.expensemanager.cache.CacheNames;
 import com.expensemanager.util.Money;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +47,8 @@ public class AnalyticsService {
         this.visibility = visibility;
     }
 
+    /** Cached in Redis when it is enabled; see {@link com.expensemanager.cache.UserScopedKeyGenerator}. */
+    @Cacheable(cacheNames = CacheNames.ANALYTICS, keyGenerator = CacheNames.KEY_GENERATOR)
     @Transactional(readOnly = true)
     public AnalyticsResponse forPeriod(String period, LocalDate from, LocalDate to) {
         DateRanges.Range range = DateRanges.resolve(period, from, to, LocalDate.now());

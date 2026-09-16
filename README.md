@@ -264,9 +264,11 @@ All endpoints except `/api/auth/**` and `/api/health` require
 | POST | `/api/auth/verify-reset-otp` | `{ email, otp }` - checks the code without using it; 5 wrong tries lock it |
 | POST | `/api/auth/reset-password` | `{ email, otp, newPassword }` - 204, signs every session out |
 
-Reset codes are emailed through Brevo's HTTP API, because Render's free plan blocks SMTP.
-Set `BREVO_API_KEY` and `MAIL_FROM_EMAIL` (a sender verified in Brevo). Locally, the dev
-profile prints the code to the console when no key is set.
+Reset codes are emailed over HTTPS, because Render's free plan blocks SMTP. To send from
+your Gmail, deploy [backend/gmail-apps-script.gs](backend/gmail-apps-script.gs) as an Apps
+Script web app (steps in the file) and set `GMAIL_SCRIPT_URL` and `GMAIL_SCRIPT_SECRET`.
+Brevo works too: set `BREVO_API_KEY` and `MAIL_FROM_EMAIL` (a sender verified in Brevo).
+Locally, the dev profile prints the code to the console when neither is set.
 
 ### Salary
 | Method | Path | Body / query |

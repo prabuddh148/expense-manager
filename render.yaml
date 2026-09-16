@@ -43,8 +43,12 @@ services:
       - key: GOOGLE_CLIENT_IDS
         sync: false
 
-      # Forgot-password codes go out through Brevo's HTTP API (free plan blocks SMTP).
-      # MAIL_FROM_EMAIL must be a sender verified in Brevo.
+      # Forgot-password codes go out over HTTPS (free plan blocks SMTP). Set either the
+      # Gmail pair (deploy backend/gmail-apps-script.gs first) or the Brevo pair.
+      - key: GMAIL_SCRIPT_URL
+        sync: false
+      - key: GMAIL_SCRIPT_SECRET
+        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: MAIL_FROM_EMAIL

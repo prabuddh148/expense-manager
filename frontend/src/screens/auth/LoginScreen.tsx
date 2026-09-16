@@ -103,7 +103,16 @@ export function LoginScreen({ navigation }: Props) {
         placeholder="Your password"
         error={passwordError}
         required
+        containerStyle={{ marginBottom: spacing.sm }}
       />
+
+      <Pressable
+        onPress={() => navigation.navigate('ForgotPassword', { email: email.trim() || undefined })}
+        hitSlop={8}
+        style={[styles.forgot, { marginBottom: spacing.lg }]}
+      >
+        <Text style={[typography.label, { color: colors.primary }]}>Forgot password?</Text>
+      </Pressable>
 
       {error && error.kind !== 'validation' ? (
         <Text style={[typography.caption, { color: colors.danger, marginBottom: spacing.md }]}>
@@ -153,6 +162,7 @@ const styles = StyleSheet.create({
   themeRow: { flexDirection: 'row', justifyContent: 'flex-end' },
   themeButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   notice: { flexDirection: 'row', alignItems: 'center', padding: 12 },
+  forgot: { alignSelf: 'flex-end' },
   divider: { flexDirection: 'row', alignItems: 'center' },
   line: { flex: 1, height: StyleSheet.hairlineWidth },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },

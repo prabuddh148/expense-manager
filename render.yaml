@@ -43,6 +43,15 @@ services:
       - key: GOOGLE_CLIENT_IDS
         sync: false
 
+      # Forgot-password codes go out through Brevo's HTTP API (free plan blocks SMTP).
+      # MAIL_FROM_EMAIL must be a sender verified in Brevo.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: MAIL_FROM_EMAIL
+        sync: false
+      - key: MAIL_FROM_NAME
+        value: Expense Manager
+
       # The mobile app is not a browser origin, so CORS only matters if you add a web
       # client later. Narrow this then.
       - key: CORS_ALLOWED_ORIGINS

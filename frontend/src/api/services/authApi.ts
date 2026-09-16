@@ -14,6 +14,21 @@ export const authApi = {
   google: (idToken: string) =>
     bareClient.post<AuthResponse>('/auth/google', { idToken }).then((r) => r.data),
 
+  /** Emails a 6 digit reset code. Answers the same whether or not the account exists. */
+  forgotPassword: (email: string) =>
+    bareClient
+      .post<{ message: string }>('/auth/forgot-password', { email })
+      .then((r) => r.data),
+
+  /** Checks the code without using it up, so the next step can ask for the new password. */
+  verifyResetOtp: (email: string, otp: string) =>
+    bareClient
+      .post<{ message: string }>('/auth/verify-reset-otp', { email, otp })
+      .then((r) => r.data),
+
+  resetPassword: (email: string, otp: string, newPassword: string) =>
+    bareClient.post('/auth/reset-password', { email, otp, newPassword }).then(() => true),
+
   logout: (refreshToken: string) => bareClient.post('/auth/logout', { refreshToken }),
 
   me: () => apiClient.get<User>('/auth/me').then((r) => r.data),

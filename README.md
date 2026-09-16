@@ -260,6 +260,13 @@ All endpoints except `/api/auth/**` and `/api/health` require
 | POST | `/api/auth/refresh` | `{ refreshToken }` - rotates the pair |
 | POST | `/api/auth/logout` | `{ refreshToken }` |
 | GET | `/api/auth/me` | - |
+| POST | `/api/auth/forgot-password` | `{ email }` - emails a 6 digit code, valid 10 min; same answer for unknown emails |
+| POST | `/api/auth/verify-reset-otp` | `{ email, otp }` - checks the code without using it; 5 wrong tries lock it |
+| POST | `/api/auth/reset-password` | `{ email, otp, newPassword }` - 204, signs every session out |
+
+Reset codes are emailed through Brevo's HTTP API, because Render's free plan blocks SMTP.
+Set `BREVO_API_KEY` and `MAIL_FROM_EMAIL` (a sender verified in Brevo). Locally, the dev
+profile prints the code to the console when no key is set.
 
 ### Salary
 | Method | Path | Body / query |
@@ -524,6 +531,7 @@ and drive it through MockMvc and the real security filter chain - no mocked prin
 | `MoneyTest` | Scaling, rounding, percentages, zero-divisor guards |
 | `DateRangesTest` | Week/month boundaries, custom-range validation |
 | `AuthControllerTest` | Signup, duplicate email, weak password, login, `/me`, refresh rotation, refresh-token replay, logout, Google unconfigured |
+| `PasswordResetTest` | Emailed code resets the password and revokes sessions, single use, unknown email sends nothing, 5-attempt lockout, resend cooldown, new password validation |
 | `ExpenseFlowTest` | Seeded categories, salary and category balances after an expense, Other requiring a name, edit/delete recalculation, search + filter + paging, category delete keeping expenses, per-user isolation |
 | `LoanFlowTest` | Instalments reducing the balance, auto-close, overpayment rejection, editing and deleting a payment, dashboard rollup, per-user isolation |
 | `SalaryPlannerTest` | Percentage derivation, under- and over-allocation, item lifecycle, update replacing sections, per-user isolation |

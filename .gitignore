@@ -34,5 +34,6 @@ Thumbs.db
 frontend/android/
 frontend/ios/
 
-# Gradle caches inside the local native modules
+# Gradle caches and build output inside the local native modules
 **/.gradle/
+frontend/modules/*/android/build/

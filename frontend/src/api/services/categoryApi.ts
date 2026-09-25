@@ -1,5 +1,5 @@
 import { apiClient } from '../client';
-import { Category, CategoryPayload } from '../../types/api';
+import { Category, CategoryMergePayload, CategoryPayload } from '../../types/api';
 
 export const categoryApi = {
   list: (year?: number, month?: number) =>
@@ -12,6 +12,12 @@ export const categoryApi = {
 
   update: (id: number, payload: CategoryPayload) =>
     apiClient.put<Category>(`/categories/${id}`, payload).then((r) => r.data),
+
+  addFunds: (id: number, amount: number) =>
+    apiClient.post<Category>(`/categories/${id}/add-funds`, { amount }).then((r) => r.data),
+
+  merge: (payload: CategoryMergePayload) =>
+    apiClient.post<Category>('/categories/merge', payload).then((r) => r.data),
 
   remove: (id: number) => apiClient.delete(`/categories/${id}`).then(() => undefined),
 };

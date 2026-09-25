@@ -1,5 +1,6 @@
 import { apiClient } from '../client';
 import {
+  MoneyTrackerAdjustDirection,
   MoneyTrackerPayload,
   MoneyTrackerStatus,
   MoneyTrackerSummary,
@@ -23,6 +24,12 @@ export const moneyTrackerApi = {
 
   update: (id: number, payload: MoneyTrackerPayload) =>
     apiClient.put<MoneyTrackerTransaction>(`/money-tracker/${id}`, payload).then((r) => r.data),
+
+  /** Raises or lowers the amount, e.g. more was lent or part of it came back. */
+  adjust: (id: number, amount: number, direction: MoneyTrackerAdjustDirection) =>
+    apiClient
+      .post<MoneyTrackerTransaction>(`/money-tracker/${id}/adjust`, { amount, direction })
+      .then((r) => r.data),
 
   remove: (id: number) => apiClient.delete(`/money-tracker/${id}`).then(() => undefined),
 

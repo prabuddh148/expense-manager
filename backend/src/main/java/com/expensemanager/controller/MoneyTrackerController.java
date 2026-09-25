@@ -1,5 +1,6 @@
 package com.expensemanager.controller;
 
+import com.expensemanager.dto.moneytracker.MoneyTrackerAdjustRequest;
 import com.expensemanager.dto.moneytracker.MoneyTrackerLinkRequest;
 import com.expensemanager.dto.moneytracker.MoneyTrackerRequest;
 import com.expensemanager.dto.moneytracker.MoneyTrackerResponse;
@@ -57,6 +58,13 @@ public class MoneyTrackerController {
     public MoneyTrackerResponse update(@PathVariable Long id,
                                        @Valid @RequestBody MoneyTrackerRequest request) {
         return moneyTrackerService.update(id, request);
+    }
+
+    /** Adds to or takes off the amount, e.g. more was lent or part of it came back. */
+    @PostMapping("/{id}/adjust")
+    public MoneyTrackerResponse adjust(@PathVariable Long id,
+                                       @Valid @RequestBody MoneyTrackerAdjustRequest request) {
+        return moneyTrackerService.adjust(id, request);
     }
 
     @DeleteMapping("/{id}")

@@ -79,8 +79,6 @@ public class SalaryService {
                 .orElseGet(() -> new Salary(user, BigDecimal.ZERO, period.getYear(), period.getMonthValue()));
 
         salary.setAmount(Money.scale(request.amount()));
-        salary.setTargetAmount(request.targetAmount() == null ? null : Money.scale(request.targetAmount()));
-        salary.setTargetDate(request.targetDate());
 
         return toResponse(salaryRepository.save(salary));
     }
@@ -91,8 +89,6 @@ public class SalaryService {
                 .orElseThrow(() -> new ResourceNotFoundException("Salary " + id + " not found"));
 
         salary.setAmount(Money.scale(request.amount()));
-        salary.setTargetAmount(request.targetAmount() == null ? null : Money.scale(request.targetAmount()));
-        salary.setTargetDate(request.targetDate());
 
         return toResponse(salaryRepository.save(salary));
     }
@@ -113,9 +109,9 @@ public class SalaryService {
     }
 
     private SalaryResponse emptyResponse(YearMonth period) {
-        return new SalaryResponse(null, Money.ZERO, null, null,
+        return new SalaryResponse(null, Money.ZERO,
                 period.getYear(), period.getMonthValue(),
-                null, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, null);
+                Money.ZERO, Money.ZERO, Money.ZERO, null);
     }
 
     private SalaryResponse toResponse(Salary salary) {
@@ -124,19 +120,12 @@ public class SalaryService {
         BigDecimal deductions = deductionsFor(userId, range.from(), range.to());
         BigDecimal additions = additionsFor(userId, range.from(), range.to());
         BigDecimal amount = Money.scale(salary.getAmount());
-        BigDecimal target = salary.getTargetAmount() == null ? null : Money.scale(salary.getTargetAmount());
 
         return new SalaryResponse(
                 salary.getId(),
                 amount,
-                target,
-                salary.getTargetDate(),
                 salary.getPeriodYear(),
                 salary.getPeriodMonth(),
-                // The target is about the salary itself, so one-off additions do not
-                // count towards it - only a real raise moves that needle.
-                target == null ? null : Money.subtract(target, amount),
-                target == null ? Money.ZERO : Money.cappedPercentage(amount, target),
                 deductions,
                 additions,
                 Money.subtract(Money.add(amount, additions), deductions),

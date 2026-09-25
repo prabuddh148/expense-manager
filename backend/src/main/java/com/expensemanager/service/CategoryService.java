@@ -1,7 +1,9 @@
 package com.expensemanager.service;
 
+import com.expensemanager.dto.category.CategoryMergeRequest;
 import com.expensemanager.dto.category.CategoryRequest;
 import com.expensemanager.dto.category.CategoryResponse;
+import com.expensemanager.dto.category.CategoryTopUpRequest;
 import com.expensemanager.entity.Category;
 import com.expensemanager.entity.User;
 import com.expensemanager.exception.BadRequestException;
@@ -10,6 +12,7 @@ import com.expensemanager.exception.ResourceNotFoundException;
 import com.expensemanager.mapper.CategoryMapper;
 import com.expensemanager.repository.CategoryRepository;
 import com.expensemanager.repository.ExpenseRepository;
+import com.expensemanager.repository.SmsTransactionRepository;
 import com.expensemanager.security.CurrentUser;
 import com.expensemanager.security.FeatureVisibility;
 import com.expensemanager.util.DateRanges;
@@ -20,25 +23,30 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final ExpenseRepository expenseRepository;
+    private final SmsTransactionRepository smsTransactionRepository;
     private final CategoryMapper categoryMapper;
     private final CurrentUser currentUser;
     private final FeatureVisibility visibility;
 
     public CategoryService(CategoryRepository categoryRepository,
                            ExpenseRepository expenseRepository,
+                           SmsTransactionRepository smsTransactionRepository,
                            CategoryMapper categoryMapper,
                            CurrentUser currentUser,
                            FeatureVisibility visibility) {
         this.categoryRepository = categoryRepository;
         this.expenseRepository = expenseRepository;
+        this.smsTransactionRepository = smsTransactionRepository;
         this.categoryMapper = categoryMapper;
         this.currentUser = currentUser;
         this.visibility = visibility;
@@ -108,13 +116,61 @@ public class CategoryService {
         category.setColor(request.color());
         category.setIcon(request.icon());
         categoryRepository.save(category);
+        return currentMonthResponse(category);
+    }
 
-        DateRanges.Range range = monthRange(null, null);
-        return categoryMapper.toResponse(
-                category,
-                expenseRepository.sumForCategoryBetween(
-                        id, range.from(), range.to(), visibility.expenseSources()),
-                expenseRepository.countByCategoryId(id));
+    /** Money that arrived from elsewhere for this bucket raises its budget by that much. */
+    @Transactional
+    public CategoryResponse addFunds(Long id, CategoryTopUpRequest request) {
+        Category category = requireOwned(id, currentUser.id());
+        category.setAllocatedAmount(Money.add(category.getAllocatedAmount(), request.amount()));
+        categoryRepository.save(category);
+        return currentMonthResponse(category);
+    }
+
+    /**
+     * Folds the chosen categories into the one the user keeps: its budget becomes the sum of
+     * all of them, and every expense or SMS filed under the others moves across, so no spend
+     * is lost or double counted. The other categories are then removed.
+     */
+    @Transactional
+    public CategoryResponse merge(CategoryMergeRequest request) {
+        Long userId = currentUser.id();
+        Set<Long> ids = new LinkedHashSet<>(request.categoryIds());
+        if (ids.size() < 2) {
+            throw new BadRequestException("Pick at least two different categories to merge");
+        }
+        if (!ids.contains(request.keepId())) {
+            throw new BadRequestException("The category to keep must be one of those being merged");
+        }
+
+        Category keep = requireOwned(request.keepId(), userId);
+        BigDecimal total = Money.scale(keep.getAllocatedAmount());
+        for (Long id : ids) {
+            if (id.equals(keep.getId())) {
+                continue;
+            }
+            Category merged = requireOwned(id, userId);
+            total = Money.add(total, merged.getAllocatedAmount());
+
+            expenseRepository.findAll((root, query, builder) -> builder.and(
+                            builder.equal(root.get("user").get("id"), userId),
+                            builder.equal(root.get("category").get("id"), id)))
+                    .forEach(expense -> {
+                        expense.setCategory(keep);
+                        expenseRepository.save(expense);
+                    });
+            smsTransactionRepository.findByUserIdAndCategoryId(userId, id)
+                    .forEach(sms -> {
+                        sms.setCategory(keep);
+                        smsTransactionRepository.save(sms);
+                    });
+            categoryRepository.delete(merged);
+        }
+
+        keep.setAllocatedAmount(total);
+        categoryRepository.save(keep);
+        return currentMonthResponse(keep);
     }
 
     /**
@@ -148,6 +204,15 @@ public class CategoryService {
             throw new BadRequestException(
                     "Other is reserved for one-off expenses and cannot be used as a category name");
         }
+    }
+
+    private CategoryResponse currentMonthResponse(Category category) {
+        DateRanges.Range range = monthRange(null, null);
+        return categoryMapper.toResponse(
+                category,
+                expenseRepository.sumForCategoryBetween(
+                        category.getId(), range.from(), range.to(), visibility.expenseSources()),
+                expenseRepository.countByCategoryId(category.getId()));
     }
 
     private DateRanges.Range monthRange(Integer year, Integer month) {

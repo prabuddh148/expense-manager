@@ -1,5 +1,6 @@
 package com.expensemanager.service;
 
+import com.expensemanager.dto.moneytracker.MoneyTrackerAdjustRequest;
 import com.expensemanager.dto.moneytracker.MoneyTrackerLinkRequest;
 import com.expensemanager.dto.moneytracker.MoneyTrackerRequest;
 import com.expensemanager.dto.moneytracker.MoneyTrackerResponse;
@@ -25,6 +26,7 @@ import com.expensemanager.util.Money;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -122,6 +124,36 @@ public class MoneyTrackerService {
         transaction.setDueDate(request.dueDate());
         transaction.setNotes(trimToNull(request.notes()));
 
+        return mapper.toResponse(moneyTrackerRepository.save(transaction));
+    }
+
+    /**
+     * Adds to or takes off what is owed without retyping the whole entry - more was lent,
+     * or part of it came back. Blocked while linked for the same reason as update.
+     */
+    @Transactional
+    public MoneyTrackerResponse adjust(Long id, MoneyTrackerAdjustRequest request) {
+        MoneyTrackerTransaction transaction = require(id);
+        if (transaction.isLinked()) {
+            throw new BadRequestException("Undo this transaction before changing its amount");
+        }
+
+        boolean adding = request.direction() == MoneyTrackerAdjustRequest.Direction.ADD;
+        BigDecimal next = adding
+                ? Money.add(transaction.getAmount(), request.amount())
+                : Money.subtract(transaction.getAmount(), request.amount());
+        if (!Money.isPositive(next)) {
+            throw new BadRequestException("That would take the amount to "
+                    + next.max(Money.ZERO).toPlainString()
+                    + ". If it is fully settled, mark it paid or received instead");
+        }
+
+        transaction.setAmount(next);
+        // More is owed than was settled, so it is open again.
+        if (adding && transaction.getStatus() == MoneyTrackerStatus.COMPLETED) {
+            transaction.setStatus(MoneyTrackerStatus.PENDING);
+            transaction.setCompletedAt(null);
+        }
         return mapper.toResponse(moneyTrackerRepository.save(transaction));
     }
 

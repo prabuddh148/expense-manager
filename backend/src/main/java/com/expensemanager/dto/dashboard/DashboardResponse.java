@@ -5,7 +5,6 @@ import com.expensemanager.dto.analytics.DailySpendResponse;
 import com.expensemanager.dto.expense.ExpenseResponse;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 
 /** Everything the dashboard tab needs, in one round trip. */
@@ -22,10 +21,6 @@ public record DashboardResponse(
 ) {
     public record SalarySummary(
             BigDecimal amount,
-            BigDecimal targetAmount,
-            BigDecimal difference,
-            BigDecimal progressPercentage,
-            LocalDate targetDate,
             BigDecimal totalDeductions,
             BigDecimal totalAdditions,
             BigDecimal remainingAmount

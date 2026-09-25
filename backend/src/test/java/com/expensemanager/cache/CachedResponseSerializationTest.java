@@ -28,7 +28,7 @@ class CachedResponseSerializationTest extends ApiTestBase {
     void seedData() throws Exception {
         YearMonth now = YearMonth.now();
         mockMvc.perform(authed(post("/api/salary"), new SalaryRequest(
-                        new BigDecimal("50000"), new BigDecimal("80000"), LocalDate.now().plusMonths(6),
+                        new BigDecimal("50000"),
                         now.getYear(), now.getMonthValue())))
                 .andExpect(status().isOk());
         String category = mockMvc.perform(authed(post("/api/categories"),

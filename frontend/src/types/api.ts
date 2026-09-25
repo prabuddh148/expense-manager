@@ -18,13 +18,10 @@ export type AuthResponse = {
 
 export type Salary = {
   id: number | null;
+  /** The target salary for the month - everything is deducted from this. */
   amount: number;
-  targetAmount: number | null;
-  targetDate: string | null;
   year: number;
   month: number;
-  difference: number | null;
-  progressPercentage: number;
   totalDeductions: number;
   /** Credited on top of the salary this month, e.g. a Money Tracker receivable. */
   totalAdditions: number;
@@ -34,8 +31,6 @@ export type Salary = {
 
 export type SalaryPayload = {
   amount: number;
-  targetAmount?: number | null;
-  targetDate?: string | null;
   year?: number;
   month?: number;
 };
@@ -59,6 +54,12 @@ export type CategoryPayload = {
   allocatedAmount: number;
   color?: string | null;
   icon?: string | null;
+};
+
+export type CategoryMergePayload = {
+  categoryIds: number[];
+  /** The category that survives with the combined budget. */
+  keepId: number;
 };
 
 export type Expense = {
@@ -194,10 +195,6 @@ export type Dashboard = {
   monthLabel: string;
   salary: {
     amount: number;
-    targetAmount: number | null;
-    difference: number | null;
-    progressPercentage: number;
-    targetDate: string | null;
     totalDeductions: number;
     totalAdditions: number;
     remainingAmount: number;
@@ -309,6 +306,8 @@ export type MoneyTrackerPayload = {
   dueDate?: string | null;
   notes?: string | null;
 };
+
+export type MoneyTrackerAdjustDirection = 'ADD' | 'SUBTRACT';
 
 export type MoneyTrackerSummary = {
   toPay: number;

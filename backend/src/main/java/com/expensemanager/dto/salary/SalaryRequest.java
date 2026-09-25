@@ -7,12 +7,10 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 
+/** amount is the target salary for the month - the one figure everything is deducted from. */
 public record SalaryRequest(
         @NotNull @DecimalMin(value = "0.00") @Digits(integer = 13, fraction = 2) BigDecimal amount,
-        @DecimalMin(value = "0.00") @Digits(integer = 13, fraction = 2) BigDecimal targetAmount,
-        LocalDate targetDate,
         @Min(2000) @Max(2100) Integer year,
         @Min(1) @Max(12) Integer month
 ) {}

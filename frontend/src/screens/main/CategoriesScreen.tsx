@@ -61,10 +61,65 @@ export function CategoriesScreen() {
   const [touched, setTouched] = useState(false);
   const [deleting, setDeleting] = useState<Category | null>(null);
 
+  // Add money: a category that got cash from somewhere else gets its budget raised.
+  const [fundsFor, setFundsFor] = useState<Category | null>(null);
+  const [fundsAmount, setFundsAmount] = useState('');
+  const [fundsTouched, setFundsTouched] = useState(false);
+
+  // Merge: pick two or more categories, then the one that survives with the combined budget.
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeIds, setMergeIds] = useState<number[]>([]);
+  const [keepId, setKeepId] = useState<number | null>(null);
+
   const save = useSubmit(async (payload: Parameters<typeof categoryApi.create>[0]) =>
     editing ? categoryApi.update(editing.id, payload) : categoryApi.create(payload),
   );
   const remove = useSubmit((id: number) => categoryApi.remove(id));
+  const addFunds = useSubmit((id: number, amount: number) => categoryApi.addFunds(id, amount));
+  const merge = useSubmit(categoryApi.merge);
+
+  const openFunds = useCallback((category: Category) => {
+    setFundsFor(category);
+    setFundsAmount('');
+    setFundsTouched(false);
+  }, []);
+
+  const numericFunds = Number(fundsAmount.replace(/,/g, ''));
+  const fundsValid = Number.isFinite(numericFunds) && numericFunds > 0;
+
+  const onAddFunds = async () => {
+    setFundsTouched(true);
+    if (!fundsFor || !fundsValid) return;
+    const result = await addFunds.submit(fundsFor.id, numericFunds);
+    if (result) {
+      setFundsFor(null);
+      showToast(`${formatMoney(numericFunds)} added to ${result.name}`, 'success');
+      void reload();
+    }
+  };
+
+  const openMerge = () => {
+    setMergeIds([]);
+    setKeepId(null);
+    setMergeOpen(true);
+  };
+
+  const toggleMerge = (id: number) => {
+    const next = mergeIds.includes(id) ? mergeIds.filter((x) => x !== id) : [...mergeIds, id];
+    setMergeIds(next);
+    // The kept category has to be one of the selected ones.
+    if (keepId !== null && !next.includes(keepId)) setKeepId(null);
+  };
+
+  const onMerge = async () => {
+    if (mergeIds.length < 2 || keepId === null) return;
+    const result = await merge.submit({ categoryIds: mergeIds, keepId });
+    if (result) {
+      setMergeOpen(false);
+      showToast(`Merged into ${result.name}`, 'success');
+      void reload();
+    }
+  };
 
   const openSheet = useCallback((category: Category | null) => {
     setEditing(category);
@@ -115,6 +170,14 @@ export function CategoriesScreen() {
             </Text>
           </View>
 
+          <Pressable
+            onPress={() => openFunds(item)}
+            hitSlop={10}
+            style={{ marginRight: spacing.lg }}
+            accessibilityLabel={`Add money to ${item.name}`}
+          >
+            <Ionicons name="add-circle-outline" size={20} color={colors.success} />
+          </Pressable>
           <Pressable onPress={() => setDeleting(item)} hitSlop={10}>
             <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
           </Pressable>
@@ -144,7 +207,7 @@ export function CategoriesScreen() {
         </View>
       </Card>
     ),
-    [colors, openSheet, spacing, typography],
+    [colors, openFunds, openSheet, spacing, typography],
   );
 
   if (loading) {
@@ -211,6 +274,16 @@ export function CategoriesScreen() {
                   {overspentCount} {overspentCount === 1 ? 'category is' : 'categories are'} over
                   budget
                 </Text>
+              ) : null}
+
+              {(data ?? []).length >= 2 ? (
+                <Button
+                  label="Merge categories"
+                  variant="secondary"
+                  icon="git-merge-outline"
+                  onPress={openMerge}
+                  style={{ marginTop: spacing.lg }}
+                />
               ) : null}
             </Card>
           ) : null
@@ -311,6 +384,163 @@ export function CategoriesScreen() {
           label="Cancel"
           variant="ghost"
           onPress={() => setSheetOpen(false)}
+          style={{ marginTop: spacing.sm }}
+        />
+      </BottomSheet>
+
+      <BottomSheet
+        visible={fundsFor !== null}
+        onClose={() => setFundsFor(null)}
+        title={`Add money to ${fundsFor?.name ?? 'category'}`}
+      >
+        <Text style={[typography.body, { color: colors.textMuted, marginBottom: spacing.lg }]}>
+          Got money for this from somewhere else? It is added on top of the current budget of{' '}
+          {formatMoney(fundsFor?.allocatedAmount ?? 0)}.
+        </Text>
+
+        <TextField
+          label="Amount to add"
+          value={fundsAmount}
+          onChangeText={setFundsAmount}
+          keyboardType="decimal-pad"
+          placeholder="500"
+          icon="add-circle-outline"
+          required
+          error={
+            fundsTouched && !fundsValid ? 'Enter an amount above 0' : addFunds.fieldErrors.amount
+          }
+          hint={
+            fundsFor && fundsValid
+              ? `New budget: ${formatMoney(fundsFor.allocatedAmount + numericFunds)}`
+              : undefined
+          }
+        />
+
+        {addFunds.error && addFunds.error.kind !== 'validation' ? (
+          <Text style={[typography.caption, { color: colors.danger, marginBottom: spacing.md }]}>
+            {addFunds.error.message}
+          </Text>
+        ) : null}
+
+        <Button label="Add money" onPress={onAddFunds} loading={addFunds.submitting} />
+        <Button
+          label="Cancel"
+          variant="ghost"
+          onPress={() => setFundsFor(null)}
+          style={{ marginTop: spacing.sm }}
+        />
+      </BottomSheet>
+
+      <BottomSheet visible={mergeOpen} onClose={() => setMergeOpen(false)} title="Merge categories">
+        <Text style={[typography.label, { color: colors.textMuted, marginBottom: spacing.sm }]}>
+          1. PICK THE CATEGORIES TO MERGE
+        </Text>
+        {(data ?? []).map((category) => {
+          const selected = mergeIds.includes(category.id);
+          return (
+            <Pressable
+              key={category.id}
+              onPress={() => toggleMerge(category.id)}
+              style={[styles.row, { paddingVertical: spacing.sm }]}
+            >
+              <Ionicons
+                name={selected ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={selected ? colors.primary : colors.textMuted}
+              />
+              <Text
+                style={[typography.body, styles.flex, { color: colors.text, marginLeft: spacing.md }]}
+                numberOfLines={1}
+              >
+                {category.name}
+              </Text>
+              <Text style={[typography.caption, { color: colors.textMuted }]}>
+                {formatMoney(category.allocatedAmount)}
+              </Text>
+            </Pressable>
+          );
+        })}
+
+        {mergeIds.length >= 2 ? (
+          <>
+            <Text
+              style={[
+                typography.label,
+                { color: colors.textMuted, marginTop: spacing.lg, marginBottom: spacing.sm },
+              ]}
+            >
+              2. WHICH ONE SHOULD STAY?
+            </Text>
+            {(data ?? [])
+              .filter((category) => mergeIds.includes(category.id))
+              .map((category) => {
+                const kept = keepId === category.id;
+                return (
+                  <Pressable
+                    key={category.id}
+                    onPress={() => setKeepId(category.id)}
+                    style={[styles.row, { paddingVertical: spacing.sm }]}
+                  >
+                    <Ionicons
+                      name={kept ? 'radio-button-on' : 'radio-button-off'}
+                      size={22}
+                      color={kept ? colors.primary : colors.textMuted}
+                    />
+                    <Text
+                      style={[
+                        typography.body,
+                        styles.flex,
+                        { color: colors.text, marginLeft: spacing.md },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {category.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+
+            <Card style={{ marginTop: spacing.lg, marginBottom: spacing.lg }}>
+              <Text style={[typography.caption, { color: colors.textMuted }]}>FINAL BUDGET</Text>
+              <Text style={[typography.title, { color: colors.text, marginTop: spacing.xs }]}>
+                {formatMoney(
+                  (data ?? [])
+                    .filter((category) => mergeIds.includes(category.id))
+                    .reduce((sum, category) => sum + category.allocatedAmount, 0),
+                )}
+              </Text>
+              <Text style={[typography.caption, { color: colors.textMuted, marginTop: spacing.sm }]}>
+                {keepId !== null
+                  ? `Everything moves into ${
+                      (data ?? []).find((category) => category.id === keepId)?.name
+                    }. The other ${mergeIds.length - 1} will be deleted, their expenses are kept.`
+                  : 'Choose the category to keep.'}
+              </Text>
+            </Card>
+          </>
+        ) : (
+          <Text style={[typography.caption, { color: colors.textMuted, marginVertical: spacing.md }]}>
+            Select at least two.
+          </Text>
+        )}
+
+        {merge.error ? (
+          <Text style={[typography.caption, { color: colors.danger, marginBottom: spacing.md }]}>
+            {merge.error.message}
+          </Text>
+        ) : null}
+
+        <Button
+          label="Merge"
+          icon="git-merge-outline"
+          onPress={onMerge}
+          loading={merge.submitting}
+          disabled={mergeIds.length < 2 || keepId === null}
+        />
+        <Button
+          label="Cancel"
+          variant="ghost"
+          onPress={() => setMergeOpen(false)}
           style={{ marginTop: spacing.sm }}
         />
       </BottomSheet>

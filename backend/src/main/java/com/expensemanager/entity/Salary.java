@@ -15,10 +15,9 @@ import jakarta.persistence.UniqueConstraint;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 
 /**
- * One row per user per month. The amount is the salary actually received that month and
+ * One row per user per month. The amount is the target salary set for that month and
  * acts as the parent balance every expense and EMI payment draws down.
  */
 @Entity
@@ -36,13 +35,6 @@ public class Salary {
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal amount = BigDecimal.ZERO;
-
-    /** The salary the user is working towards. Null until they set a goal. */
-    @Column(name = "target_amount", precision = 15, scale = 2)
-    private BigDecimal targetAmount;
-
-    @Column(name = "target_date")
-    private LocalDate targetDate;
 
     @Column(name = "period_year", nullable = false)
     private int periodYear;
@@ -94,22 +86,6 @@ public class Salary {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
-    }
-
-    public BigDecimal getTargetAmount() {
-        return targetAmount;
-    }
-
-    public void setTargetAmount(BigDecimal targetAmount) {
-        this.targetAmount = targetAmount;
-    }
-
-    public LocalDate getTargetDate() {
-        return targetDate;
-    }
-
-    public void setTargetDate(LocalDate targetDate) {
-        this.targetDate = targetDate;
     }
 
     public int getPeriodYear() {

@@ -40,7 +40,7 @@ class AnalyticsTest extends ApiTestBase {
     void monthlyTotals() throws Exception {
         YearMonth month = YearMonth.now();
         mockMvc.perform(authed(post("/api/salary"), new SalaryRequest(
-                        new BigDecimal("45000"), new BigDecimal("100000"), null,
+                        new BigDecimal("45000"),
                         month.getYear(), month.getMonthValue())))
                 .andExpect(status().isOk());
 

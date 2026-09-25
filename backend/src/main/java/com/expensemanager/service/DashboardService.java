@@ -68,19 +68,14 @@ public class DashboardService {
         Optional<Salary> salary = salaryRepository.findByUserIdAndPeriodYearAndPeriodMonth(
                 userId, period.getYear(), period.getMonthValue());
         BigDecimal salaryAmount = salary.map(s -> Money.scale(s.getAmount())).orElse(Money.ZERO);
-        BigDecimal target = salary.map(Salary::getTargetAmount).map(Money::scale).orElse(null);
 
         // Money credited on top of the salary this month, e.g. a Money Tracker receivable
         // the user chose to add on. Kept out of the salary figure itself so the stated
-        // salary and its target stay meaningful.
+        // salary stays meaningful.
         BigDecimal additions = salaryService.additionsFor(userId, range.from(), range.to());
 
         var salarySummary = new DashboardResponse.SalarySummary(
                 salaryAmount,
-                target,
-                target == null ? null : Money.subtract(target, salaryAmount),
-                target == null ? Money.ZERO : Money.cappedPercentage(salaryAmount, target),
-                salary.map(Salary::getTargetDate).orElse(null),
                 analytics.totalDeductions(),
                 additions,
                 Money.subtract(Money.add(salaryAmount, additions), analytics.totalDeductions()));

@@ -125,19 +125,10 @@ export function DashboardScreen() {
         label="Remaining this month"
         amount={formatMoney(salary.remainingAmount)}
         stats={[
-          { label: 'Salary', value: formatMoney(salary.amount) },
+          { label: 'Target salary', value: formatMoney(salary.amount) },
           { label: 'Deductions', value: formatMoney(salary.totalDeductions) },
         ]}
-        progress={
-          salary.targetAmount
-            ? {
-                percentage: salary.progressPercentage,
-                label: `Target ${formatMoney(salary.targetAmount)}`,
-                trailing: formatPercent(salary.progressPercentage),
-              }
-            : undefined
-        }
-        hint="Tap to set a target salary"
+        hint="Tap to set your target salary"
         onPress={() => navigation.navigate('SalaryTarget')}
       />
 

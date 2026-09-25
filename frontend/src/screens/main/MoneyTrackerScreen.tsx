@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { moneyTrackerApi } from '../../api';
 import {
+  BottomSheet,
   Button,
   Card,
   ConfirmDialog,
@@ -14,12 +15,14 @@ import {
   FloatingActionButton,
   Screen,
   SkeletonList,
+  TextField,
 } from '../../components';
 import { useAsyncData } from '../../hooks/useAsyncData';
+import { useSubmit } from '../../hooks/useSubmit';
 import { AppStackParamList } from '../../navigation/types';
 import { useToast } from '../../store/ToastContext';
 import { useTheme } from '../../theme';
-import { MoneyTrackerTransaction } from '../../types/api';
+import { MoneyTrackerAdjustDirection, MoneyTrackerTransaction } from '../../types/api';
 import { formatDate } from '../../utils/date';
 import { formatMoney } from '../../utils/format';
 
@@ -54,6 +57,14 @@ export function MoneyTrackerScreen() {
   const [filter, setFilter] = useState<Filter>('ALL');
   const [pending, setPending] = useState<PendingAction>(null);
   const [working, setWorking] = useState(false);
+
+  const [adjustFor, setAdjustFor] = useState<MoneyTrackerTransaction | null>(null);
+  const [adjustDirection, setAdjustDirection] = useState<MoneyTrackerAdjustDirection>('ADD');
+  const [adjustAmount, setAdjustAmount] = useState('');
+  const [adjustTouched, setAdjustTouched] = useState(false);
+  const adjust = useSubmit((id: number, amount: number, direction: MoneyTrackerAdjustDirection) =>
+    moneyTrackerApi.adjust(id, amount, direction),
+  );
 
   const listFetcher = useCallback(() => moneyTrackerApi.list(), []);
   const { data, loading, refreshing, error, refresh, reload } = useAsyncData(listFetcher, [], {
@@ -100,6 +111,32 @@ export function MoneyTrackerScreen() {
       showToast(toAppError(caught).message, 'error');
     } finally {
       setWorking(false);
+    }
+  };
+
+  const openAdjust = useCallback((transaction: MoneyTrackerTransaction) => {
+    setAdjustFor(transaction);
+    setAdjustDirection('ADD');
+    setAdjustAmount('');
+    setAdjustTouched(false);
+  }, []);
+
+  const numericAdjust = Number(adjustAmount.replace(/,/g, ''));
+  const adjustValid = Number.isFinite(numericAdjust) && numericAdjust > 0;
+  const adjustedTotal = adjustFor
+    ? adjustFor.amount + (adjustDirection === 'ADD' ? numericAdjust : -numericAdjust)
+    : 0;
+  // Taking it to zero is what marking it settled is for, so the server refuses it too.
+  const adjustTooFar = adjustValid && adjustedTotal <= 0;
+
+  const onAdjust = async () => {
+    setAdjustTouched(true);
+    if (!adjustFor || !adjustValid || adjustTooFar) return;
+    const result = await adjust.submit(adjustFor.id, numericAdjust, adjustDirection);
+    if (result) {
+      setAdjustFor(null);
+      showToast(`${result.title} is now ${formatMoney(result.amount)}`, 'success');
+      reloadAll();
     }
   };
 
@@ -194,10 +231,20 @@ export function MoneyTrackerScreen() {
               />
             </View>
           )}
+
+          {moved ? null : (
+            <Button
+              label="Add / subtract amount"
+              variant="ghost"
+              icon="swap-vertical-outline"
+              style={{ marginTop: spacing.sm }}
+              onPress={() => openAdjust(item)}
+            />
+          )}
         </Card>
       );
     },
-    [colors, navigation, spacing, typography],
+    [colors, navigation, openAdjust, spacing, typography],
   );
 
   if (loading) {
@@ -296,6 +343,94 @@ export function MoneyTrackerScreen() {
         onPress={() => navigation.navigate('MoneyTrackerForm')}
       />
 
+      <BottomSheet
+        visible={adjustFor !== null}
+        onClose={() => setAdjustFor(null)}
+        title={`Change amount · ${adjustFor?.title ?? ''}`}
+      >
+        <Text style={[typography.body, { color: colors.textMuted, marginBottom: spacing.lg }]}>
+          Right now: {formatMoney(adjustFor?.amount ?? 0)}. Lent more, or got part of it back? Add
+          or subtract it here. Your salary is not touched.
+        </Text>
+
+        <View style={[styles.actions, { marginBottom: spacing.lg }]}>
+          {(['ADD', 'SUBTRACT'] as const).map((direction, index) => {
+            const active = adjustDirection === direction;
+            const tone = direction === 'ADD' ? colors.success : colors.danger;
+            return (
+              <React.Fragment key={direction}>
+                {index > 0 ? <View style={{ width: spacing.sm }} /> : null}
+                <Pressable
+                  onPress={() => setAdjustDirection(direction)}
+                  style={[
+                    styles.flex,
+                    styles.toggle,
+                    {
+                      backgroundColor: active ? tone + '22' : colors.surface,
+                      borderColor: active ? tone : colors.border,
+                      borderRadius: radius.md,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={direction === 'ADD' ? 'add-circle-outline' : 'remove-circle-outline'}
+                    size={18}
+                    color={active ? tone : colors.textMuted}
+                  />
+                  <Text
+                    style={[
+                      typography.label,
+                      { color: active ? tone : colors.textMuted, marginLeft: 6 },
+                    ]}
+                  >
+                    {direction === 'ADD' ? 'Add' : 'Subtract'}
+                  </Text>
+                </Pressable>
+              </React.Fragment>
+            );
+          })}
+        </View>
+
+        <TextField
+          label={adjustDirection === 'ADD' ? 'Amount to add' : 'Amount to subtract'}
+          value={adjustAmount}
+          onChangeText={setAdjustAmount}
+          keyboardType="decimal-pad"
+          placeholder="500"
+          icon={adjustDirection === 'ADD' ? 'add-circle-outline' : 'remove-circle-outline'}
+          required
+          error={
+            adjustTouched && !adjustValid
+              ? 'Enter an amount above 0'
+              : adjustTooFar
+                ? 'That takes it to zero - mark it paid or received instead'
+                : adjust.fieldErrors.amount
+          }
+          hint={
+            adjustValid && !adjustTooFar ? `New amount: ${formatMoney(adjustedTotal)}` : undefined
+          }
+        />
+
+        {adjust.error && adjust.error.kind !== 'validation' ? (
+          <Text style={[typography.caption, { color: colors.danger, marginBottom: spacing.md }]}>
+            {adjust.error.message}
+          </Text>
+        ) : null}
+
+        <Button
+          label={adjustDirection === 'ADD' ? 'Add amount' : 'Subtract amount'}
+          onPress={onAdjust}
+          loading={adjust.submitting}
+          disabled={adjustTooFar}
+        />
+        <Button
+          label="Cancel"
+          variant="ghost"
+          onPress={() => setAdjustFor(null)}
+          style={{ marginTop: spacing.sm }}
+        />
+      </BottomSheet>
+
       <ConfirmDialog
         visible={pending !== null}
         title={
@@ -372,4 +507,11 @@ const styles = StyleSheet.create({
   badges: { flexDirection: 'row', gap: 8 },
   badge: { paddingVertical: 4 },
   actions: { flexDirection: 'row' },
+  toggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderWidth: 1,
+  },
 });

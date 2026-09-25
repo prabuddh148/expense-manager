@@ -1,5 +1,7 @@
 package com.expensemanager.controller;
 
+import com.expensemanager.dto.moneytracker.MoneyTrackerAdjustRequest;
+import com.expensemanager.dto.moneytracker.MoneyTrackerAdjustRequest.Direction;
 import com.expensemanager.dto.moneytracker.MoneyTrackerRequest;
 import com.expensemanager.dto.salary.SalaryRequest;
 import com.expensemanager.entity.MoneyTrackerType;
@@ -36,7 +38,7 @@ class MoneyTrackerFlowTest extends ApiTestBase {
 
     private void setSalary(String amount) throws Exception {
         mockMvc.perform(authed(post("/api/salary"),
-                        new SalaryRequest(new BigDecimal(amount), null, null,
+                        new SalaryRequest(new BigDecimal(amount),
                                 TODAY.getYear(), TODAY.getMonthValue())))
                 .andExpect(status().isOk());
     }
@@ -195,6 +197,54 @@ class MoneyTrackerFlowTest extends ApiTestBase {
                 .andExpect(status().isBadRequest());
         mockMvc.perform(authed(post("/api/money-tracker/" + pay + "/add-on")))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("the amount can be raised or lowered without touching the salary")
+    void adjustChangesAmount() throws Exception {
+        setSalary("45000");
+        long id = createTransaction("Rahul", "1000", MoneyTrackerType.RECEIVE);
+
+        mockMvc.perform(authed(post("/api/money-tracker/" + id + "/adjust"),
+                        new MoneyTrackerAdjustRequest(new BigDecimal("500"), Direction.ADD)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(1500.00));
+
+        mockMvc.perform(authed(post("/api/money-tracker/" + id + "/adjust"),
+                        new MoneyTrackerAdjustRequest(new BigDecimal("300"), Direction.SUBTRACT)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(1200.00));
+
+        // Taking it to zero or below is refused - that is what marking it settled is for.
+        mockMvc.perform(authed(post("/api/money-tracker/" + id + "/adjust"),
+                        new MoneyTrackerAdjustRequest(new BigDecimal("1200"), Direction.SUBTRACT)))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(authed(get("/api/money-tracker/summary")))
+                .andExpect(jsonPath("$.toReceive").value(1200.00));
+        assertThat(salary().get("remainingAmount").decimalValue()).isEqualByComparingTo("45000.00");
+    }
+
+    @Test
+    @DisplayName("adding to a settled transaction reopens it, and a linked one cannot be adjusted")
+    void adjustRespectsState() throws Exception {
+        setSalary("45000");
+        long settled = createTransaction("Laundry", "100", MoneyTrackerType.PAY);
+        mockMvc.perform(authed(post("/api/money-tracker/" + settled + "/complete")))
+                .andExpect(status().isOk());
+        mockMvc.perform(authed(post("/api/money-tracker/" + settled + "/adjust"),
+                        new MoneyTrackerAdjustRequest(new BigDecimal("50"), Direction.ADD)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(150.00))
+                .andExpect(jsonPath("$.status").value("PENDING"));
+
+        long linked = createTransaction("Rent", "2000", MoneyTrackerType.PAY);
+        mockMvc.perform(authed(post("/api/money-tracker/" + linked + "/deduct")))
+                .andExpect(status().isOk());
+        mockMvc.perform(authed(post("/api/money-tracker/" + linked + "/adjust"),
+                        new MoneyTrackerAdjustRequest(new BigDecimal("50"), Direction.ADD)))
+                .andExpect(status().isBadRequest());
+        assertThat(salary().get("remainingAmount").decimalValue()).isEqualByComparingTo("43000.00");
     }
 
     @Test

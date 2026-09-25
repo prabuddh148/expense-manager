@@ -1,7 +1,9 @@
 package com.expensemanager.controller;
 
+import com.expensemanager.dto.category.CategoryMergeRequest;
 import com.expensemanager.dto.category.CategoryRequest;
 import com.expensemanager.dto.category.CategoryResponse;
+import com.expensemanager.dto.category.CategoryTopUpRequest;
 import com.expensemanager.service.CategoryService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -51,6 +53,16 @@ public class CategoryController {
     @PutMapping("/{id}")
     public CategoryResponse update(@PathVariable Long id, @Valid @RequestBody CategoryRequest request) {
         return categoryService.update(id, request);
+    }
+
+    @PostMapping("/{id}/add-funds")
+    public CategoryResponse addFunds(@PathVariable Long id, @Valid @RequestBody CategoryTopUpRequest request) {
+        return categoryService.addFunds(id, request);
+    }
+
+    @PostMapping("/merge")
+    public CategoryResponse merge(@Valid @RequestBody CategoryMergeRequest request) {
+        return categoryService.merge(request);
     }
 
     @DeleteMapping("/{id}")

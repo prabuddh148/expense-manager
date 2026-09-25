@@ -1,6 +1,8 @@
 package com.expensemanager.controller;
 
+import com.expensemanager.dto.category.CategoryMergeRequest;
 import com.expensemanager.dto.category.CategoryRequest;
+import com.expensemanager.dto.category.CategoryTopUpRequest;
 import com.expensemanager.dto.expense.ExpenseRequest;
 import com.expensemanager.dto.salary.SalaryRequest;
 import com.expensemanager.support.ApiTestBase;
@@ -12,6 +14,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.YearMonth;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -34,12 +37,11 @@ class ExpenseFlowTest extends ApiTestBase {
         return objectMapper.readTree(body).get("id").asLong();
     }
 
-    private void setSalary(String amount, String target) throws Exception {
+    private void setSalary(String amount) throws Exception {
         YearMonth now = YearMonth.from(TODAY);
         mockMvc.perform(authed(post("/api/salary"), new SalaryRequest(
                         new BigDecimal(amount),
-                        target == null ? null : new BigDecimal(target),
-                        null, now.getYear(), now.getMonthValue())))
+                        now.getYear(), now.getMonthValue())))
                 .andExpect(status().isOk());
     }
 
@@ -54,7 +56,7 @@ class ExpenseFlowTest extends ApiTestBase {
     @Test
     @DisplayName("an expense reduces both the salary balance and its category balance")
     void expenseAffectsSalaryAndCategory() throws Exception {
-        setSalary("45000", "100000");
+        setSalary("45000");
         long petrol = createCategory("Bike Fuel", "3500");
 
         mockMvc.perform(authed(post("/api/expenses"), new ExpenseRequest(
@@ -66,8 +68,7 @@ class ExpenseFlowTest extends ApiTestBase {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalDeductions").value(500.00))
                 .andExpect(jsonPath("$.remainingAmount").value(44500.00))
-                .andExpect(jsonPath("$.difference").value(55000.00))
-                .andExpect(jsonPath("$.progressPercentage").value(45.00));
+                .andExpect(jsonPath("$.amount").value(45000.00));
 
         mockMvc.perform(authed(get("/api/categories/" + petrol)))
                 .andExpect(status().isOk())
@@ -93,7 +94,7 @@ class ExpenseFlowTest extends ApiTestBase {
     @Test
     @DisplayName("editing and deleting an expense corrects the running totals")
     void editAndDeleteAdjustTotals() throws Exception {
-        setSalary("45000", null);
+        setSalary("45000");
         long food = createCategory("Food dining", "5000");
 
         String created = mockMvc.perform(authed(post("/api/expenses"), new ExpenseRequest(
@@ -116,6 +117,52 @@ class ExpenseFlowTest extends ApiTestBase {
         mockMvc.perform(authed(get("/api/salary")))
                 .andExpect(jsonPath("$.totalDeductions").value(0.00))
                 .andExpect(jsonPath("$.remainingAmount").value(45000.00));
+    }
+
+    @Test
+    @DisplayName("adding money to a category raises its budget")
+    void addFundsRaisesBudget() throws Exception {
+        long food = createCategory("Food dining", "5000");
+
+        mockMvc.perform(authed(post("/api/categories/" + food + "/add-funds"),
+                        new CategoryTopUpRequest(new BigDecimal("750.50"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.allocatedAmount").value(5750.50))
+                .andExpect(jsonPath("$.remainingAmount").value(5750.50));
+
+        mockMvc.perform(authed(post("/api/categories/" + food + "/add-funds"),
+                        new CategoryTopUpRequest(BigDecimal.ZERO)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("merging categories keeps the chosen one with the combined budget and all spend")
+    void mergeCategories() throws Exception {
+        long food = createCategory("Food dining", "5000");
+        long snacks = createCategory("Snacks", "1000");
+        long tea = createCategory("Tea", "500");
+
+        mockMvc.perform(authed(post("/api/expenses"), new ExpenseRequest(
+                new BigDecimal("200"), snacks, null, "Chips", TODAY, null)));
+        mockMvc.perform(authed(post("/api/expenses"), new ExpenseRequest(
+                new BigDecimal("50"), tea, null, null, TODAY, null)));
+
+        mockMvc.perform(authed(post("/api/categories/merge"),
+                        new CategoryMergeRequest(List.of(food, tea), snacks)))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(authed(post("/api/categories/merge"),
+                        new CategoryMergeRequest(List.of(food, snacks, tea), food)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(food))
+                .andExpect(jsonPath("$.allocatedAmount").value(6500.00))
+                .andExpect(jsonPath("$.spentAmount").value(250.00))
+                .andExpect(jsonPath("$.transactionCount").value(2));
+
+        mockMvc.perform(authed(get("/api/categories/" + snacks)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(authed(get("/api/categories/" + tea)))
+                .andExpect(status().isNotFound());
     }
 
     @Test

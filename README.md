@@ -12,8 +12,8 @@ actually left.
 ## Features
 
 **Money**
-- Monthly salary with an optional target salary, target date and progress
-- Category budgets with spent / remaining / overspend tracking
+- One target salary per month - the balance every expense and EMI is deducted from
+- Category budgets with spent / remaining / overspend tracking, top-ups and merging
 - Expenses against a category, or one-off expenses under **Other** with a required name
 - Full history: search, category filter, date range, sort, pagination, edit, delete
 - Loans with append-only EMI payment history; balance always derived from payments
@@ -275,7 +275,7 @@ Locally, the dev profile prints the code to the console when neither is set.
 | --- | --- | --- |
 | GET | `/api/salary` | `?year&month` (defaults to now) |
 | GET | `/api/salary/history` | - |
-| POST | `/api/salary` | `{ amount, targetAmount?, targetDate?, year?, month? }` - upsert |
+| POST | `/api/salary` | `{ amount, year?, month? }` - upsert; amount is the target salary |
 | PUT | `/api/salary/{id}` | same body |
 
 ### Categories
@@ -285,6 +285,8 @@ Locally, the dev profile prints the code to the console when neither is set.
 | GET | `/api/categories/{id}` | - |
 | POST | `/api/categories` | `{ name, allocatedAmount, color?, icon? }` |
 | PUT | `/api/categories/{id}` | same body |
+| POST | `/api/categories/{id}/add-funds` | `{ amount }` - raises the budget by amount |
+| POST | `/api/categories/merge` | `{ categoryIds, keepId }` - keepId survives with the summed budget; expenses and SMS move to it |
 | DELETE | `/api/categories/{id}` | - |
 
 ### Expenses

@@ -46,7 +46,7 @@ class FeatureVisibilityTest extends ApiTestBase {
     @BeforeEach
     void seedOneOfEverything() throws Exception {
         mockMvc.perform(authed(post("/api/salary"),
-                        new SalaryRequest(new BigDecimal("50000"), null, null,
+                        new SalaryRequest(new BigDecimal("50000"),
                                 TODAY.getYear(), TODAY.getMonthValue())))
                 .andExpect(status().isOk());
 

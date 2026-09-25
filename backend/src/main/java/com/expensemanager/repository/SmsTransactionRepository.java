@@ -20,6 +20,8 @@ public interface SmsTransactionRepository extends JpaRepository<SmsTransaction, 
 
     long countByUserIdAndStatus(Long userId, SmsTransactionStatus status);
 
+    List<SmsTransaction> findByUserIdAndCategoryId(Long userId, Long categoryId);
+
     /**
      * Bank names are never hard-coded - the filter list is whatever has actually been
      * detected for this user, with how many are still waiting on them.

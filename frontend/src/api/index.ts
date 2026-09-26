@@ -4,6 +4,7 @@ export * from './errors';
 export * from './tokenStorage';
 export * from './services/authApi';
 export * from './services/salaryApi';
+export * from './services/cycleApi';
 export * from './services/categoryApi';
 export * from './services/expenseApi';
 export * from './services/loanApi';

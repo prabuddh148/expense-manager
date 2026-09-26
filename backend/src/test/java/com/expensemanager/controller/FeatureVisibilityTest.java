@@ -101,7 +101,8 @@ class FeatureVisibilityTest extends ApiTestBase {
         assertMoney(dashboard.at("/expenses/totalSpent"), "1600.00");
         assertMoney(dashboard.at("/salary/totalDeductions"), "16600.00");
         assertMoney(dashboard.at("/salary/totalAdditions"), "200.00");
-        assertMoney(dashboard.at("/salary/remainingAmount"), "33600.00");
+        // What is left comes from the category budgets (10,000), not the salary.
+        assertMoney(dashboard.at("/salary/remainingAmount"), "-6400.00");
         assertThat(json(get("/api/expenses"), null).get("totalElements").asInt()).isEqualTo(3);
     }
 
@@ -110,7 +111,7 @@ class FeatureVisibilityTest extends ApiTestBase {
     void hidingEmi() throws Exception {
         JsonNode dashboard = json(get("/api/dashboard"), "emi");
         assertMoney(dashboard.at("/salary/totalDeductions"), "1600.00");
-        assertMoney(dashboard.at("/salary/remainingAmount"), "48600.00");
+        assertMoney(dashboard.at("/salary/remainingAmount"), "8600.00");
 
         JsonNode analytics = json(get("/api/analytics").param("period", "this_month"), "emi");
         assertMoney(analytics.get("totalEmiPaid"), "0.00");
@@ -140,7 +141,7 @@ class FeatureVisibilityTest extends ApiTestBase {
         JsonNode dashboard = json(get("/api/dashboard"), "money-tracker");
         assertMoney(dashboard.at("/expenses/totalSpent"), "1500.00");
         assertMoney(dashboard.at("/salary/totalAdditions"), "0.00");
-        assertMoney(dashboard.at("/salary/remainingAmount"), "33500.00");
+        assertMoney(dashboard.at("/salary/remainingAmount"), "-6500.00");
     }
 
     @Test

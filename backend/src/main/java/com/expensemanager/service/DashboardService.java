@@ -2,9 +2,7 @@ package com.expensemanager.service;
 
 import com.expensemanager.dto.analytics.AnalyticsResponse;
 import com.expensemanager.dto.dashboard.DashboardResponse;
-import com.expensemanager.entity.Category;
 import com.expensemanager.entity.LoanStatus;
-import com.expensemanager.entity.Salary;
 import com.expensemanager.repository.CategoryRepository;
 import com.expensemanager.repository.EmiPaymentRepository;
 import com.expensemanager.repository.LoanRepository;
@@ -20,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
-import java.util.Optional;
 
 /** Assembles the whole dashboard in one query pass so the mobile app makes a single call. */
 @Service
@@ -35,6 +32,7 @@ public class DashboardService {
     private final ExpenseService expenseService;
     private final AnalyticsService analyticsService;
     private final SalaryService salaryService;
+    private final BudgetCycleService cycleService;
     private final CurrentUser currentUser;
 
     public DashboardService(SalaryRepository salaryRepository,
@@ -44,6 +42,7 @@ public class DashboardService {
                             ExpenseService expenseService,
                             AnalyticsService analyticsService,
                             SalaryService salaryService,
+                            BudgetCycleService cycleService,
                             CurrentUser currentUser) {
         this.salaryRepository = salaryRepository;
         this.categoryRepository = categoryRepository;
@@ -52,6 +51,7 @@ public class DashboardService {
         this.expenseService = expenseService;
         this.analyticsService = analyticsService;
         this.salaryService = salaryService;
+        this.cycleService = cycleService;
         this.currentUser = currentUser;
     }
 
@@ -60,29 +60,39 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public DashboardResponse get(Integer year, Integer month) {
         Long userId = currentUser.id();
-        YearMonth period = (year == null || month == null) ? YearMonth.now() : YearMonth.of(year, month);
-        DateRanges.Range range = DateRanges.ofMonth(period.getYear(), period.getMonthValue());
+        // No month asked for means the running cycle, which starts on salary day.
+        boolean cycle = year == null || month == null;
+        DateRanges.Range range = cycle
+                ? cycleService.currentRange(userId)
+                : DateRanges.ofMonth(year, month);
+        YearMonth period = YearMonth.from(range.from());
 
         AnalyticsResponse analytics = analyticsService.build(userId, range);
 
-        Optional<Salary> salary = salaryRepository.findByUserIdAndPeriodYearAndPeriodMonth(
-                userId, period.getYear(), period.getMonthValue());
-        BigDecimal salaryAmount = salary.map(s -> Money.scale(s.getAmount())).orElse(Money.ZERO);
+        BigDecimal salaryAmount = cycle
+                ? cycleService.currentTarget(userId)
+                : salaryRepository.findByUserIdAndPeriodYearAndPeriodMonth(userId, year, month)
+                        .map(s -> Money.scale(s.getAmount()))
+                        .orElse(Money.ZERO);
 
         // Money credited on top of the salary this month, e.g. a Money Tracker receivable
         // the user chose to add on. Kept out of the salary figure itself so the stated
         // salary stays meaningful.
         BigDecimal additions = salaryService.additionsFor(userId, range.from(), range.to());
 
+        BigDecimal budgeted = BudgetCycleService.allocatedTotal(categoryRepository.findByUserIdOrderByNameAsc(userId));
+
+        // In a cycle the target stays put and what is left comes from the categories; a past
+        // calendar month keeps the old salary-minus-spend figure.
         var salarySummary = new DashboardResponse.SalarySummary(
                 salaryAmount,
                 analytics.totalDeductions(),
                 additions,
-                Money.subtract(Money.add(salaryAmount, additions), analytics.totalDeductions()));
-
-        BigDecimal budgeted = categoryRepository.findByUserIdOrderByNameAsc(userId).stream()
-                .map(Category::getAllocatedAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                cycle
+                        ? BudgetCycleService.remaining(budgeted, additions, analytics.totalDeductions())
+                        : Money.subtract(Money.add(salaryAmount, additions), analytics.totalDeductions()),
+                range.from(),
+                budgeted);
 
         var expenseSummary = new DashboardResponse.ExpenseSummary(
                 analytics.totalExpenses(),

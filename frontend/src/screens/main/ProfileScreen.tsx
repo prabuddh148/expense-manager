@@ -38,8 +38,8 @@ export function ProfileScreen() {
   }[] = [
     {
       icon: 'cash-outline',
-      label: 'Target Salary',
-      hint: 'Set the amount this month runs on',
+      label: 'Target & Reset',
+      hint: 'Reset on salary day, edit the target',
       onPress: () => navigation.navigate('SalaryTarget'),
     },
     {

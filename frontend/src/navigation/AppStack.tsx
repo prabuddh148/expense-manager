@@ -38,7 +38,7 @@ export function AppStack() {
       <Stack.Screen
         name="SalaryTarget"
         component={SalaryTargetScreen}
-        options={{ title: 'Target Salary' }}
+        options={{ title: 'Target & Reset' }}
       />
       <Stack.Screen name="Categories" component={CategoriesScreen} options={{ title: 'Categories' }} />
       <Stack.Screen

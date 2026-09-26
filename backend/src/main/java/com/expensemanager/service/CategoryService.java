@@ -21,7 +21,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -37,22 +36,28 @@ public class CategoryService {
     private final CategoryMapper categoryMapper;
     private final CurrentUser currentUser;
     private final FeatureVisibility visibility;
+    private final BudgetCycleService cycleService;
 
     public CategoryService(CategoryRepository categoryRepository,
                            ExpenseRepository expenseRepository,
                            SmsTransactionRepository smsTransactionRepository,
                            CategoryMapper categoryMapper,
                            CurrentUser currentUser,
-                           FeatureVisibility visibility) {
+                           FeatureVisibility visibility,
+                           BudgetCycleService cycleService) {
         this.categoryRepository = categoryRepository;
         this.expenseRepository = expenseRepository;
         this.smsTransactionRepository = smsTransactionRepository;
         this.categoryMapper = categoryMapper;
         this.currentUser = currentUser;
         this.visibility = visibility;
+        this.cycleService = cycleService;
     }
 
-    /** Budgets reset every month, so spend is reported for the requested month only. */
+    /**
+     * Budgets reset on salary day, so spend is reported for the running cycle, or for a
+     * calendar month when one is asked for.
+     */
     @Transactional(readOnly = true)
     public List<CategoryResponse> list(Integer year, Integer month) {
         Long userId = currentUser.id();
@@ -96,9 +101,10 @@ public class CategoryService {
         }
         rejectReservedName(name);
 
-        Category category = new Category(
-                user, name, Money.scale(request.allocatedAmount()), request.color(), request.icon());
-        return categoryMapper.toResponse(categoryRepository.save(category), BigDecimal.ZERO, 0L);
+        Category category = categoryRepository.save(new Category(
+                user, name, Money.scale(request.allocatedAmount()), request.color(), request.icon()));
+        cycleService.syncTargetToCategories(user);
+        return categoryMapper.toResponse(category, BigDecimal.ZERO, 0L);
     }
 
     @Transactional
@@ -116,6 +122,7 @@ public class CategoryService {
         category.setColor(request.color());
         category.setIcon(request.icon());
         categoryRepository.save(category);
+        cycleService.syncTargetToCategories(currentUser.entity());
         return currentMonthResponse(category);
     }
 
@@ -125,6 +132,7 @@ public class CategoryService {
         Category category = requireOwned(id, currentUser.id());
         category.setAllocatedAmount(Money.add(category.getAllocatedAmount(), request.amount()));
         categoryRepository.save(category);
+        cycleService.syncTargetToCategories(currentUser.entity());
         return currentMonthResponse(category);
     }
 
@@ -170,6 +178,7 @@ public class CategoryService {
 
         keep.setAllocatedAmount(total);
         categoryRepository.save(keep);
+        cycleService.syncTargetToCategories(currentUser.entity());
         return currentMonthResponse(keep);
     }
 
@@ -192,6 +201,7 @@ public class CategoryService {
                     expenseRepository.save(expense);
                 });
         categoryRepository.delete(category);
+        cycleService.syncTargetToCategories(currentUser.entity());
     }
 
     Category requireOwned(Long id, Long userId) {
@@ -216,7 +226,9 @@ public class CategoryService {
     }
 
     private DateRanges.Range monthRange(Integer year, Integer month) {
-        YearMonth period = (year == null || month == null) ? YearMonth.now() : YearMonth.of(year, month);
-        return DateRanges.ofMonth(period.getYear(), period.getMonthValue());
+        if (year == null || month == null) {
+            return cycleService.currentRange(currentUser.id());
+        }
+        return DateRanges.ofMonth(year, month);
     }
 }

@@ -122,13 +122,17 @@ export function DashboardScreen() {
       ) : null}
 
       <BalanceCard
-        label="Remaining this month"
+        label="Remaining in categories"
         amount={formatMoney(salary.remainingAmount)}
         stats={[
-          { label: 'Target salary', value: formatMoney(salary.amount) },
+          { label: 'Target', value: formatMoney(salary.amount) },
           { label: 'Deductions', value: formatMoney(salary.totalDeductions) },
         ]}
-        hint="Tap to set your target salary"
+        hint={
+          salary.periodStart
+            ? `Since ${formatDate(salary.periodStart)} · tap to edit or reset`
+            : 'Tap to edit the target or reset'
+        }
         onPress={() => navigation.navigate('SalaryTarget')}
       />
 

@@ -12,7 +12,8 @@ actually left.
 ## Features
 
 **Money**
-- One target salary per month - the balance every expense and EMI is deducted from
+- Budget cycles that start on salary day: reset with fresh category budgets, the target is
+  their total and stays fixed, and what is left is counted across the categories
 - Category budgets with spent / remaining / overspend tracking, top-ups and merging
 - Expenses against a category, or one-off expenses under **Other** with a required name
 - Full history: search, category filter, date range, sort, pagination, edit, delete
@@ -277,6 +278,13 @@ Locally, the dev profile prints the code to the console when neither is set.
 | GET | `/api/salary/history` | - |
 | POST | `/api/salary` | `{ amount, year?, month? }` - upsert; amount is the target salary |
 | PUT | `/api/salary/{id}` | same body |
+
+### Budget cycle
+| Method | Path | Body / query |
+| --- | --- | --- |
+| GET | `/api/cycle` | - running cycle: start date, target, allocated, spent, remaining |
+| PUT | `/api/cycle/target` | `{ amount }` - held until the next reset or category budget change |
+| POST | `/api/cycle/reset` | `{ startDate, budgets: [{ categoryId, amount }] }` - new cycle; categories left out start at 0 |
 
 ### Categories
 | Method | Path | Body / query |

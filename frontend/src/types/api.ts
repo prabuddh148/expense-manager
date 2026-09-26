@@ -35,6 +35,25 @@ export type SalaryPayload = {
   month?: number;
 };
 
+/** The running budget cycle: from salary day until the next reset. */
+export type Cycle = {
+  id: number | null;
+  startDate: string;
+  /** Fixed for the cycle: moves on reset, a category budget change or a manual edit. */
+  targetAmount: number;
+  allocatedTotal: number;
+  totalDeductions: number;
+  totalAdditions: number;
+  /** Left across the categories: allocated + additions - deductions. */
+  remainingAmount: number;
+  updatedAt: string | null;
+};
+
+export type CycleResetPayload = {
+  startDate: string;
+  budgets: { categoryId: number; amount: number }[];
+};
+
 export type Category = {
   id: number;
   name: string;
@@ -198,6 +217,9 @@ export type Dashboard = {
     totalDeductions: number;
     totalAdditions: number;
     remainingAmount: number;
+    /** Salary day of the running cycle. */
+    periodStart: string;
+    allocatedTotal: number;
   };
   expenses: {
     totalSpent: number;

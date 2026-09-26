@@ -5,6 +5,7 @@ import com.expensemanager.dto.analytics.DailySpendResponse;
 import com.expensemanager.dto.expense.ExpenseResponse;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 /** Everything the dashboard tab needs, in one round trip. */
@@ -23,7 +24,11 @@ public record DashboardResponse(
             BigDecimal amount,
             BigDecimal totalDeductions,
             BigDecimal totalAdditions,
-            BigDecimal remainingAmount
+            BigDecimal remainingAmount,
+            /** First day of the window: salary day for a cycle, the 1st for a calendar month. */
+            LocalDate periodStart,
+            /** Sum of the category budgets. */
+            BigDecimal allocatedTotal
     ) {}
 
     public record ExpenseSummary(

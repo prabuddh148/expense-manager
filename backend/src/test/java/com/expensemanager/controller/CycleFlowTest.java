@@ -131,6 +131,53 @@ class CycleFlowTest extends ApiTestBase {
     }
 
     @Test
+    @DisplayName("reset clears what was already spent in the cycle, even earlier the same day")
+    void resetClearsSpentSoFar() throws Exception {
+        long food = createCategory("Groceries", "5000");
+        spend(food, "900", TODAY);
+
+        reset(TODAY, List.of(budget(food, "7000")), 200);
+
+        mockMvc.perform(authed(get("/api/cycle")))
+                .andExpect(jsonPath("$.totalDeductions").value(0.00))
+                .andExpect(jsonPath("$.remainingAmount").value(7000.00));
+        mockMvc.perform(authed(get("/api/categories/" + food)))
+                .andExpect(jsonPath("$.spentAmount").value(0.00));
+
+        spend(food, "400", TODAY);
+
+        mockMvc.perform(authed(get("/api/cycle")))
+                .andExpect(jsonPath("$.totalDeductions").value(400.00))
+                .andExpect(jsonPath("$.remainingAmount").value(6600.00));
+
+        // Resetting again the same day clears it once more.
+        reset(TODAY, List.of(budget(food, "7000")), 200);
+        mockMvc.perform(authed(get("/api/cycle")))
+                .andExpect(jsonPath("$.totalDeductions").value(0.00));
+    }
+
+    @Test
+    @DisplayName("reset can create new categories, e.g. imported from a plan")
+    void resetCreatesCategories() throws Exception {
+        long food = createCategory("Groceries", "5000");
+
+        mockMvc.perform(authed(post("/api/cycle/reset"), new CycleResetRequest(TODAY,
+                        List.of(budget(food, "6000")),
+                        List.of(new CycleResetRequest.NewCategory("Rent", new BigDecimal("15000"), "#22AA66")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetAmount").value(21000.00));
+
+        mockMvc.perform(authed(get("/api/categories")))
+                .andExpect(jsonPath("$[?(@.name == 'Rent')].allocatedAmount").value(15000.00));
+
+        // A name that already exists is refused, so nothing is duplicated.
+        mockMvc.perform(authed(post("/api/cycle/reset"), new CycleResetRequest(TODAY,
+                        List.of(),
+                        List.of(new CycleResetRequest.NewCategory("groceries", BigDecimal.TEN, null)))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     @DisplayName("reset refuses a future date or one before the running cycle")
     void resetDateRules() throws Exception {
         long food = createCategory("Groceries", "5000");

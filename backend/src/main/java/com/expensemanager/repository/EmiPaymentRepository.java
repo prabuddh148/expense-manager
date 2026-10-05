@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -26,10 +27,12 @@ public interface EmiPaymentRepository extends JpaRepository<EmiPayment, Long> {
             select coalesce(sum(p.amount), 0)
             from EmiPayment p
             where p.loan.user.id = :userId and p.paymentDate between :from and :to
+              and p.createdAt >= :since
             """)
     BigDecimal sumPaidForUserBetween(@Param("userId") Long userId,
                                      @Param("from") LocalDate from,
-                                     @Param("to") LocalDate to);
+                                     @Param("to") LocalDate to,
+                                     @Param("since") Instant since);
 
     @Query("""
             select p from EmiPayment p

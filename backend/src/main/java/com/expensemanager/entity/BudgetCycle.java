@@ -42,6 +42,14 @@ public class BudgetCycle {
     @Column(name = "target_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal targetAmount = BigDecimal.ZERO;
 
+    /**
+     * When the reset was pressed. Anything recorded before it stays out of this cycle, even
+     * when it is dated on or after the salary day, so a reset always starts spent at zero.
+     * Null for cycles saved before resets kept the moment, and for implicit ones.
+     */
+    @Column(name = "counted_from")
+    private Instant countedFrom;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -88,6 +96,14 @@ public class BudgetCycle {
 
     public void setTargetAmount(BigDecimal targetAmount) {
         this.targetAmount = targetAmount;
+    }
+
+    public Instant getCountedFrom() {
+        return countedFrom;
+    }
+
+    public void setCountedFrom(Instant countedFrom) {
+        this.countedFrom = countedFrom;
     }
 
     public Instant getUpdatedAt() {

@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -39,34 +40,37 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long>, JpaSpec
     @Query("""
             select coalesce(sum(e.amount), 0)
             from Expense e
-            where e.user.id = :userId and e.date between :from and :to
+            where e.user.id = :userId and e.date between :from and :to and e.createdAt >= :since
               and coalesce(e.source, com.expensemanager.entity.RecordSource.MANUAL) in :sources
             """)
     BigDecimal sumForUserBetween(@Param("userId") Long userId,
                                  @Param("from") LocalDate from,
                                  @Param("to") LocalDate to,
+                                 @Param("since") Instant since,
                                  @Param("sources") Collection<RecordSource> sources);
 
     @Query("""
             select count(e)
             from Expense e
-            where e.user.id = :userId and e.date between :from and :to
+            where e.user.id = :userId and e.date between :from and :to and e.createdAt >= :since
               and coalesce(e.source, com.expensemanager.entity.RecordSource.MANUAL) in :sources
             """)
     long countForUserBetween(@Param("userId") Long userId,
                              @Param("from") LocalDate from,
                              @Param("to") LocalDate to,
+                             @Param("since") Instant since,
                              @Param("sources") Collection<RecordSource> sources);
 
     @Query("""
             select coalesce(sum(e.amount), 0)
             from Expense e
-            where e.category.id = :categoryId and e.date between :from and :to
+            where e.category.id = :categoryId and e.date between :from and :to and e.createdAt >= :since
               and coalesce(e.source, com.expensemanager.entity.RecordSource.MANUAL) in :sources
             """)
     BigDecimal sumForCategoryBetween(@Param("categoryId") Long categoryId,
                                      @Param("from") LocalDate from,
                                      @Param("to") LocalDate to,
+                                     @Param("since") Instant since,
                                      @Param("sources") Collection<RecordSource> sources);
 
     /**
@@ -82,7 +86,7 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long>, JpaSpec
                    count(e) as transactions
             from Expense e
             left join e.category c
-            where e.user.id = :userId and e.date between :from and :to
+            where e.user.id = :userId and e.date between :from and :to and e.createdAt >= :since
               and coalesce(e.source, com.expensemanager.entity.RecordSource.MANUAL) in :sources
             group by c.id, c.name, c.color,
                      case when c.id is null then coalesce(e.expenseName, 'Other') else c.name end
@@ -91,13 +95,14 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long>, JpaSpec
     List<CategoryTotal> sumByCategoryBetween(@Param("userId") Long userId,
                                              @Param("from") LocalDate from,
                                              @Param("to") LocalDate to,
+                                             @Param("since") Instant since,
                                              @Param("sources") Collection<RecordSource> sources);
 
     /** Daily totals used by the analytics line chart. */
     @Query("""
             select e.date as day, sum(e.amount) as total
             from Expense e
-            where e.user.id = :userId and e.date between :from and :to
+            where e.user.id = :userId and e.date between :from and :to and e.createdAt >= :since
               and coalesce(e.source, com.expensemanager.entity.RecordSource.MANUAL) in :sources
             group by e.date
             order by e.date
@@ -105,6 +110,7 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long>, JpaSpec
     List<DailyTotal> sumByDayBetween(@Param("userId") Long userId,
                                      @Param("from") LocalDate from,
                                      @Param("to") LocalDate to,
+                                     @Param("since") Instant since,
                                      @Param("sources") Collection<RecordSource> sources);
 
     interface CategoryTotal {

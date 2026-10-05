@@ -52,6 +52,8 @@ export type Cycle = {
 export type CycleResetPayload = {
   startDate: string;
   budgets: { categoryId: number; amount: number }[];
+  /** Created with the reset, e.g. plan buckets that have no category yet. */
+  newCategories?: { name: string; amount: number; color?: string | null }[];
 };
 
 export type Category = {

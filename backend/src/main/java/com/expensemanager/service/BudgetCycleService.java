@@ -8,6 +8,7 @@ import com.expensemanager.entity.BudgetCycleCategory;
 import com.expensemanager.entity.Category;
 import com.expensemanager.entity.User;
 import com.expensemanager.exception.BadRequestException;
+import com.expensemanager.exception.ConflictException;
 import com.expensemanager.exception.ResourceNotFoundException;
 import com.expensemanager.repository.BudgetCycleCategoryRepository;
 import com.expensemanager.repository.BudgetCycleRepository;
@@ -20,13 +21,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The budgeting cycle runs from the day the salary arrived until the user presses reset.
@@ -109,6 +113,21 @@ public class BudgetCycleService {
             }
             fresh.put(budget.categoryId(), Money.scale(budget.amount()));
         }
+        List<CycleResetRequest.NewCategory> additions = request.newCategories() == null
+                ? List.of()
+                : request.newCategories();
+        Set<String> newNames = new HashSet<>();
+        for (CycleResetRequest.NewCategory added : additions) {
+            String name = added.name().trim();
+            if ("other".equalsIgnoreCase(name)) {
+                throw new BadRequestException(
+                        "Other is reserved for one-off expenses. Give that category another name");
+            }
+            boolean taken = categories.stream().anyMatch(c -> c.getName().equalsIgnoreCase(name));
+            if (taken || !newNames.add(name.toLowerCase(Locale.ROOT))) {
+                throw new ConflictException("You already have a category called " + name);
+            }
+        }
 
         BudgetCycle cycle;
         if (existing.isPresent() && start.equals(existing.get().getStartDate())) {
@@ -135,8 +154,15 @@ public class BudgetCycleService {
             total = Money.add(total, amount);
         }
         categoryRepository.saveAll(categories);
+        for (CycleResetRequest.NewCategory added : additions) {
+            BigDecimal amount = Money.scale(added.amount());
+            categoryRepository.save(new Category(user, added.name().trim(), amount, added.color(), null));
+            total = Money.add(total, amount);
+        }
 
         cycle.setTargetAmount(total);
+        // Spent starts again from zero now, including what was logged earlier today.
+        cycle.setCountedFrom(Instant.now());
         cycleRepository.save(cycle);
         return summary(userId);
     }
@@ -151,15 +177,18 @@ public class BudgetCycleService {
         cycleRepository.save(cycle);
     }
 
-    /** The window expenses are counted in: the cycle start until today, or a month on at least. */
+    /**
+     * The window expenses are counted in: the cycle start until today, or a month on at least,
+     * and only what was recorded after the reset was pressed.
+     */
     public DateRanges.Range currentRange(Long userId) {
-        LocalDate start = cycleRepository.findFirstByUserIdOrderByStartDateDesc(userId)
-                .map(BudgetCycle::getStartDate)
-                .orElseGet(BudgetCycleService::implicitStart);
+        Optional<BudgetCycle> cycle = cycleRepository.findFirstByUserIdOrderByStartDateDesc(userId);
+        LocalDate start = cycle.map(BudgetCycle::getStartDate).orElseGet(BudgetCycleService::implicitStart);
+        Instant since = cycle.map(BudgetCycle::getCountedFrom).orElse(Instant.EPOCH);
         LocalDate monthOn = start.plusMonths(1).minusDays(1);
         LocalDate today = LocalDate.now();
         return new DateRanges.Range(start, today.isAfter(monthOn) ? today : monthOn,
-                "Since " + LABEL.format(start));
+                "Since " + LABEL.format(start), since);
     }
 
     /** The target for the running cycle, whether or not it has been saved yet. */
@@ -184,8 +213,8 @@ public class BudgetCycleService {
         Optional<BudgetCycle> cycle = cycleRepository.findFirstByUserIdOrderByStartDateDesc(userId);
         DateRanges.Range range = currentRange(userId);
         BigDecimal allocated = allocatedTotal(categoryRepository.findByUserIdOrderByNameAsc(userId));
-        BigDecimal deductions = Money.scale(salaryService.deductionsFor(userId, range.from(), range.to()));
-        BigDecimal additions = Money.scale(salaryService.additionsFor(userId, range.from(), range.to()));
+        BigDecimal deductions = Money.scale(salaryService.deductionsFor(userId, range));
+        BigDecimal additions = Money.scale(salaryService.additionsFor(userId, range));
 
         return new CycleResponse(
                 cycle.map(BudgetCycle::getId).orElse(null),

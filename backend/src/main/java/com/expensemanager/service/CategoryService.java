@@ -65,7 +65,7 @@ public class CategoryService {
 
         Map<Long, ExpenseRepository.CategoryTotal> totals = new HashMap<>();
         for (ExpenseRepository.CategoryTotal total : expenseRepository.sumByCategoryBetween(
-                userId, range.from(), range.to(), visibility.expenseSources())) {
+                userId, range.from(), range.to(), range.since(), visibility.expenseSources())) {
             if (total.getCategoryId() != null) {
                 totals.merge(total.getCategoryId(), total, (a, b) -> a);
             }
@@ -88,7 +88,7 @@ public class CategoryService {
         Category category = requireOwned(id, userId);
         DateRanges.Range range = monthRange(year, month);
         BigDecimal spent = expenseRepository.sumForCategoryBetween(
-                id, range.from(), range.to(), visibility.expenseSources());
+                id, range.from(), range.to(), range.since(), visibility.expenseSources());
         return categoryMapper.toResponse(category, spent, expenseRepository.countByCategoryId(id));
     }
 
@@ -221,7 +221,7 @@ public class CategoryService {
         return categoryMapper.toResponse(
                 category,
                 expenseRepository.sumForCategoryBetween(
-                        category.getId(), range.from(), range.to(), visibility.expenseSources()),
+                        category.getId(), range.from(), range.to(), range.since(), visibility.expenseSources()),
                 expenseRepository.countByCategoryId(category.getId()));
     }
 

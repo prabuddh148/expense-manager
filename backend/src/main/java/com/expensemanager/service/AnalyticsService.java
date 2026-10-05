@@ -64,14 +64,14 @@ public class AnalyticsService {
     AnalyticsResponse build(Long userId, DateRanges.Range range) {
         List<RecordSource> sources = visibility.expenseSources();
         BigDecimal expenses = Money.scale(
-                expenseRepository.sumForUserBetween(userId, range.from(), range.to(), sources));
+                expenseRepository.sumForUserBetween(userId, range.from(), range.to(), range.since(), sources));
         BigDecimal emiPaid = visibility.emiVisible()
-                ? Money.scale(paymentRepository.sumPaidForUserBetween(userId, range.from(), range.to()))
+                ? Money.scale(paymentRepository.sumPaidForUserBetween(userId, range.from(), range.to(), range.since()))
                 : Money.ZERO;
         BigDecimal deductions = Money.add(expenses, emiPaid);
         BigDecimal salary = salaryForRange(userId, range);
         long transactions = expenseRepository.countForUserBetween(
-                userId, range.from(), range.to(), sources);
+                userId, range.from(), range.to(), range.since(), sources);
 
         List<DailySpendResponse> daily = dailySeries(userId, range);
         DailySpendResponse highest = daily.stream()
@@ -98,7 +98,7 @@ public class AnalyticsService {
     List<CategorySpendResponse> categories(Long userId, DateRanges.Range range) {
         List<ExpenseRepository.CategoryTotal> totals =
                 expenseRepository.sumByCategoryBetween(
-                        userId, range.from(), range.to(), visibility.expenseSources());
+                        userId, range.from(), range.to(), range.since(), visibility.expenseSources());
         BigDecimal grandTotal = totals.stream()
                 .map(ExpenseRepository.CategoryTotal::getTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -118,7 +118,7 @@ public class AnalyticsService {
     private List<DailySpendResponse> dailySeries(Long userId, DateRanges.Range range) {
         List<ExpenseRepository.DailyTotal> rows =
                 expenseRepository.sumByDayBetween(
-                        userId, range.from(), range.to(), visibility.expenseSources());
+                        userId, range.from(), range.to(), range.since(), visibility.expenseSources());
         List<DailySpendResponse> series = new ArrayList<>();
 
         int index = 0;

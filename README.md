@@ -284,7 +284,7 @@ Locally, the dev profile prints the code to the console when neither is set.
 | --- | --- | --- |
 | GET | `/api/cycle` | - running cycle: start date, target, allocated, spent, remaining |
 | PUT | `/api/cycle/target` | `{ amount }` - held until the next reset or category budget change |
-| POST | `/api/cycle/reset` | `{ startDate, budgets: [{ categoryId, amount }] }` - new cycle; categories left out start at 0 |
+| POST | `/api/cycle/reset` | `{ startDate, budgets: [{ categoryId, amount }], newCategories?: [{ name, amount, color }] }` - new cycle; categories left out start at 0, spent starts at 0 from the moment of reset |
 
 ### Categories
 | Method | Path | Body / query |

@@ -3,6 +3,7 @@ package com.expensemanager.util;
 import com.expensemanager.exception.BadRequestException;
 
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.TextStyle;
@@ -15,7 +16,16 @@ public final class DateRanges {
     private DateRanges() {
     }
 
-    public record Range(LocalDate from, LocalDate to, String label) {
+    /**
+     * {@code since} drops rows recorded before that moment even when their date falls in the
+     * window. A salary-day reset uses it so that spending already logged starts the new cycle
+     * at zero; every other window leaves it at the epoch, which drops nothing.
+     */
+    public record Range(LocalDate from, LocalDate to, String label, Instant since) {
+
+        public Range(LocalDate from, LocalDate to, String label) {
+            this(from, to, label, Instant.EPOCH);
+        }
 
         public long days() {
             return java.time.temporal.ChronoUnit.DAYS.between(from, to) + 1;

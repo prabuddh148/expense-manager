@@ -78,7 +78,7 @@ public class DashboardService {
         // Money credited on top of the salary this month, e.g. a Money Tracker receivable
         // the user chose to add on. Kept out of the salary figure itself so the stated
         // salary stays meaningful.
-        BigDecimal additions = salaryService.additionsFor(userId, range.from(), range.to());
+        BigDecimal additions = salaryService.additionsFor(userId, range);
 
         BigDecimal budgeted = BudgetCycleService.allocatedTotal(categoryRepository.findByUserIdOrderByNameAsc(userId));
 

@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 
@@ -117,8 +116,8 @@ public class SalaryService {
     private SalaryResponse toResponse(Salary salary) {
         DateRanges.Range range = DateRanges.ofMonth(salary.getPeriodYear(), salary.getPeriodMonth());
         Long userId = salary.getUser().getId();
-        BigDecimal deductions = deductionsFor(userId, range.from(), range.to());
-        BigDecimal additions = additionsFor(userId, range.from(), range.to());
+        BigDecimal deductions = deductionsFor(userId, range);
+        BigDecimal additions = additionsFor(userId, range);
         BigDecimal amount = Money.scale(salary.getAmount());
 
         return new SalaryResponse(
@@ -136,20 +135,22 @@ public class SalaryService {
      * Money credited on top of the salary in the window, e.g. a repayment received. All of
      * it comes from the Money Tracker, so it goes when that section is switched off.
      */
-    public BigDecimal additionsFor(Long userId, LocalDate from, LocalDate to) {
+    public BigDecimal additionsFor(Long userId, DateRanges.Range range) {
         if (!visibility.salaryAdditionsVisible()) {
             return Money.ZERO;
         }
-        return Money.scale(salaryAdjustmentRepository.sumForUserBetween(userId, from, to));
+        return Money.scale(salaryAdjustmentRepository.sumForUserBetween(
+                userId, range.from(), range.to(), range.since()));
     }
 
     /** Expenses plus EMI instalments paid in the window, less any section switched off. */
-    public BigDecimal deductionsFor(Long userId, LocalDate from, LocalDate to) {
+    public BigDecimal deductionsFor(Long userId, DateRanges.Range range) {
         BigDecimal emi = visibility.emiVisible()
-                ? emiPaymentRepository.sumPaidForUserBetween(userId, from, to)
+                ? emiPaymentRepository.sumPaidForUserBetween(userId, range.from(), range.to(), range.since())
                 : Money.ZERO;
         return Money.add(
-                expenseRepository.sumForUserBetween(userId, from, to, visibility.expenseSources()),
+                expenseRepository.sumForUserBetween(
+                        userId, range.from(), range.to(), range.since(), visibility.expenseSources()),
                 emi);
     }
 }
